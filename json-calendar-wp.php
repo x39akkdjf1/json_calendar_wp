@@ -2,7 +2,7 @@
 /**
  * Plugin Name: JSON Calendar
  * Description: Fetches calendar entries from a JSON endpoint and displays them with the [json_calendar] shortcode.
- * Version: 1.0.0
+ * Version: 1.1.0
  * Author: x39akkdjf1
  * License: GPL-2.0-or-later
  * Requires at least: 5.8
@@ -24,25 +24,11 @@ final class JSON_Calendar_WP {
 	}
 
 	public function add_settings_page() {
-		add_options_page(
-			__( 'JSON Calendar', 'json-calendar-wp' ),
-			__( 'JSON Calendar', 'json-calendar-wp' ),
-			'manage_options',
-			'json-calendar-wp',
-			array( $this, 'render_settings_page' )
-		);
+		add_options_page( __( 'JSON Calendar', 'json-calendar-wp' ), __( 'JSON Calendar', 'json-calendar-wp' ), 'manage_options', 'json-calendar-wp', array( $this, 'render_settings_page' ) );
 	}
 
 	public function register_settings() {
-		register_setting(
-			'json_calendar_wp_settings',
-			self::OPTION_ENDPOINT,
-			array(
-				'type'              => 'string',
-				'sanitize_callback' => 'esc_url_raw',
-				'default'           => '',
-			)
-		);
+		register_setting( 'json_calendar_wp_settings', self::OPTION_ENDPOINT, array( 'type' => 'string', 'sanitize_callback' => 'esc_url_raw', 'default' => '' ) );
 	}
 
 	public function render_settings_page() {
@@ -55,10 +41,7 @@ final class JSON_Calendar_WP {
 				<table class="form-table" role="presentation">
 					<tr>
 						<th scope="row"><label for="json_calendar_wp_endpoint"><?php echo esc_html__( 'JSON endpoint URL', 'json-calendar-wp' ); ?></label></th>
-						<td>
-							<input type="url" class="regular-text" id="json_calendar_wp_endpoint" name="<?php echo esc_attr( self::OPTION_ENDPOINT ); ?>" value="<?php echo esc_attr( get_option( self::OPTION_ENDPOINT, '' ) ); ?>" placeholder="https://example.com/calendar.json" required />
-							<p class="description"><?php echo esc_html__( 'The endpoint must return a JSON array, or an object containing an entries array.', 'json-calendar-wp' ); ?></p>
-						</td>
+						<td><input type="url" class="regular-text" id="json_calendar_wp_endpoint" name="<?php echo esc_attr( self::OPTION_ENDPOINT ); ?>" value="<?php echo esc_attr( get_option( self::OPTION_ENDPOINT, '' ) ); ?>" placeholder="https://example.com/kalender/199.json" required /></td>
 					</tr>
 				</table>
 				<?php submit_button(); ?>
@@ -68,38 +51,19 @@ final class JSON_Calendar_WP {
 	}
 
 	public function render_shortcode( $atts ) {
-		$atts = shortcode_atts(
-			array(
-			'url'   => get_option( self::OPTION_ENDPOINT, '' ),
-			'limit' => 0,
-		),
-			$atts,
-			self::SHORTCODE
-		);
-
+		$atts = shortcode_atts( array( 'url' => get_option( self::OPTION_ENDPOINT, '' ), 'limit' => 0 ), $atts, self::SHORTCODE );
 		$url = esc_url_raw( $atts['url'] );
 		if ( empty( $url ) || ! wp_http_validate_url( $url ) ) {
-			return current_user_can( 'manage_options' )
-				? '<p class="json-calendar-error">' . esc_html__( 'Configure a JSON endpoint under Settings → JSON Calendar.', 'json-calendar-wp' ) . '</p>'
-				: '';
+			return current_user_can( 'manage_options' ) ? '<p class="json-calendar-error">' . esc_html__( 'Configure a JSON endpoint under Settings → JSON Calendar.', 'json-calendar-wp' ) . '</p>' : '';
 		}
 
 		$cache_key = 'json_calendar_' . md5( $url );
-		$data      = get_transient( $cache_key );
+		$data = get_transient( $cache_key );
 		if ( false === $data ) {
-			$response = wp_safe_remote_get(
-				$url,
-				array(
-					'timeout'    => 10,
-					'headers'    => array( 'Accept' => 'application/json' ),
-					'user-agent' => 'JSON Calendar WordPress Plugin/1.0.0',
-				)
-			);
-
+			$response = wp_safe_remote_get( $url, array( 'timeout' => 10, 'headers' => array( 'Accept' => 'application/json' ), 'user-agent' => 'JSON Calendar WordPress Plugin/1.1.0' ) );
 			if ( is_wp_error( $response ) || 200 !== wp_remote_retrieve_response_code( $response ) ) {
 				return '<p class="json-calendar-error">' . esc_html__( 'Calendar entries are temporarily unavailable.', 'json-calendar-wp' ) . '</p>';
 			}
-
 			$data = json_decode( wp_remote_retrieve_body( $response ), true );
 			if ( JSON_ERROR_NONE !== json_last_error() ) {
 				return '<p class="json-calendar-error">' . esc_html__( 'The calendar endpoint returned invalid JSON.', 'json-calendar-wp' ) . '</p>';
@@ -111,10 +75,9 @@ final class JSON_Calendar_WP {
 		if ( empty( $entries ) ) {
 			return '<p class="json-calendar-empty">' . esc_html__( 'No calendar entries found.', 'json-calendar-wp' ) . '</p>';
 		}
-
 		$limit = absint( $atts['limit'] );
 		if ( $limit > 0 ) {
-			$entries = array_slice( $entries, 0, $limit );
+			$entries = array_slice( $entries, 0, $limit, true );
 		}
 
 		$output = '<div class="json-calendar"><ul class="json-calendar-list">';
@@ -122,14 +85,18 @@ final class JSON_Calendar_WP {
 			if ( ! is_array( $entry ) ) {
 				continue;
 			}
-			$title       = $this->value( $entry, array( 'title', 'name', 'summary' ), __( 'Untitled event', 'json-calendar-wp' ) );
-			$start       = $this->value( $entry, array( 'start', 'start_date', 'date', 'datetime' ) );
-			$end         = $this->value( $entry, array( 'end', 'end_date' ) );
+			$title = $this->value( $entry, array( 'title', 'name', 'summary' ), __( 'Untitled event', 'json-calendar-wp' ) );
+			$start = $this->date_time( $entry, 'date', 'time_start', array( 'start', 'start_date', 'datetime' ) );
+			$end = $this->date_time( $entry, 'date_end', 'time_end', array( 'end', 'end_date' ) );
 			$description = $this->value( $entry, array( 'description', 'details', 'content' ) );
-			$location    = $this->value( $entry, array( 'location', 'venue' ) );
-			$link        = $this->value( $entry, array( 'url', 'link', 'permalink' ) );
+			$link = $this->normalise_url( $this->value( $entry, array( 'url', 'link', 'permalink' ) ) );
+			$location = $this->value( $entry, array( 'location', 'venue', 'location_id' ) );
+			$image = $this->first_image( $entry );
 
 			$output .= '<li class="json-calendar-entry">';
+			if ( $image ) {
+				$output .= '<img class="json-calendar-image" src="' . esc_url( $image ) . '" alt="" loading="lazy" />';
+			}
 			$output .= '<h3 class="json-calendar-title">' . esc_html( $title ) . '</h3>';
 			if ( $start ) {
 				$output .= '<time class="json-calendar-date" datetime="' . esc_attr( $start ) . '">' . esc_html( $this->format_date( $start ) );
@@ -144,24 +111,64 @@ final class JSON_Calendar_WP {
 			if ( $description ) {
 				$output .= '<div class="json-calendar-description">' . wp_kses_post( $description ) . '</div>';
 			}
-			if ( $link && wp_http_validate_url( $link ) ) {
-				$output .= '<a class="json-calendar-link" href="' . esc_url( $link ) . '">' . esc_html__( 'More information', 'json-calendar-wp' ) . '</a>';
+			if ( $link ) {
+				$output .= '<a class="json-calendar-link" href="' . esc_url( $link ) . '" target="_blank" rel="noopener noreferrer">' . esc_html__( 'More information', 'json-calendar-wp' ) . '</a>';
 			}
 			$output .= '</li>';
 		}
 		$output .= '</ul></div>';
-
 		return $output;
 	}
 
 	private function get_entries( $data ) {
+		// json_calendar_generator writes 199.json as an object keyed by reference.
+		if ( ! is_array( $data ) ) {
+			return array();
+		}
 		if ( isset( $data['entries'] ) && is_array( $data['entries'] ) ) {
 			return $data['entries'];
 		}
 		if ( isset( $data['events'] ) && is_array( $data['events'] ) ) {
 			return $data['events'];
 		}
-		return is_array( $data ) && array_is_list( $data ) ? $data : array();
+		$keys = array_keys( $data );
+		$is_list = empty( $keys ) || $keys === range( 0, count( $keys ) - 1 );
+		if ( $is_list ) {
+			return $data;
+		}
+		// The generator's aggregate is { "WID006": { ...event fields... } }.
+		$entries = array();
+		foreach ( $data as $reference => $entry ) {
+			if ( is_array( $entry ) ) {
+				if ( empty( $entry['reference'] ) ) {
+					$entry['reference'] = (string) $reference;
+				}
+				$entries[] = $entry;
+			}
+		}
+		return $entries;
+	}
+
+	private function date_time( $entry, $date_key, $time_key, $fallback_keys ) {
+		$date = $this->value( $entry, array( $date_key ) );
+		$time = $this->value( $entry, array( $time_key ) );
+		return $date ? trim( $date . ( $time ? ' ' . $time : '' ) ) : $this->value( $entry, $fallback_keys );
+	}
+
+	private function first_image( $entry ) {
+		$image = isset( $entry['image'] ) ? $entry['image'] : '';
+		if ( is_array( $image ) ) {
+			$image = reset( $image );
+		}
+		return is_scalar( $image ) ? $this->normalise_url( (string) $image ) : '';
+	}
+
+	private function normalise_url( $url ) {
+		$url = trim( (string) $url );
+		if ( $url && ! preg_match( '#^https?://#i', $url ) ) {
+			$url = 'https://' . $url;
+		}
+		return $url && wp_http_validate_url( $url ) ? $url : '';
 	}
 
 	private function value( $entry, $keys, $default = '' ) {
