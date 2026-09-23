@@ -2,7 +2,7 @@
 /**
  * Plugin Name: JSON Calendar
  * Description: Fetches calendar entries from a JSON endpoint and displays them with the [json_calendar] shortcode.
- * Version: 1.3.0
+ * Version: 1.3.1
  * Author: x39akkdjf1
  * License: GPL-2.0-or-later
  * Requires at least: 5.8
@@ -16,6 +16,7 @@ if ( ! defined( 'ABSPATH' ) ) {
 final class JSON_Calendar_WP {
 	const OPTION_ENDPOINT = 'json_calendar_wp_endpoint';
 	const SHORTCODE = 'json_calendar';
+	const CACHE_VERSION = '2';
 
 	public function __construct() {
 		add_action( 'admin_menu', array( $this, 'add_settings_page' ) );
@@ -57,10 +58,10 @@ final class JSON_Calendar_WP {
 			return current_user_can( 'manage_options' ) ? '<p class="json-calendar-error">' . esc_html__( 'Configure a JSON endpoint under Settings → JSON Calendar.', 'json-calendar-wp' ) . '</p>' : '';
 		}
 
-		$cache_key = 'json_calendar_' . md5( $url );
+		$cache_key = 'json_calendar_' . self::CACHE_VERSION . '_' . md5( $url );
 		$data = get_transient( $cache_key );
 		if ( false === $data ) {
-			$response = wp_safe_remote_get( $url, array( 'timeout' => 10, 'headers' => array( 'Accept' => 'application/json' ), 'user-agent' => 'JSON Calendar WordPress Plugin/1.3.0' ) );
+			$response = wp_safe_remote_get( $url, array( 'timeout' => 10, 'headers' => array( 'Accept' => 'application/json' ), 'user-agent' => 'JSON Calendar WordPress Plugin/1.3.1' ) );
 			if ( is_wp_error( $response ) || 200 !== wp_remote_retrieve_response_code( $response ) ) {
 				return '<p class="json-calendar-error">' . esc_html__( 'Calendar entries are temporarily unavailable.', 'json-calendar-wp' ) . '</p>';
 			}
@@ -71,14 +72,13 @@ final class JSON_Calendar_WP {
 			set_transient( $cache_key, $data, 15 * MINUTE_IN_SECONDS );
 		}
 
-		$entries = $this->get_entries( $data );
-		$entries = $this->filter_future_entries( $entries );
+		$entries = $this->filter_future_entries( $this->get_entries( $data ) );
 		if ( empty( $entries ) ) {
 			return '<p class="json-calendar-empty">' . esc_html__( 'No upcoming calendar entries found.', 'json-calendar-wp' ) . '</p>';
 		}
 		$limit = absint( $atts['limit'] );
 		if ( $limit > 0 ) {
-			$entries = array_slice( $entries, 0, $limit, true );
+			$entries = array_slice( $entries, 0, $limit );
 		}
 
 		$output = '<style>.json-calendar-list{display:grid;grid-template-columns:repeat(auto-fill,minmax(220px,1fr));gap:1rem;list-style:none;margin:0;padding:0}.json-calendar-entry{position:relative;overflow:hidden;min-height:180px;background:#f5f5f5}.json-calendar-image{display:block;width:100%;height:100%;min-height:180px;object-fit:cover}.json-calendar-entry:not(:has(.json-calendar-image)){padding:1rem}.json-calendar-details{position:absolute;inset:auto 0 0;padding:1rem;color:#fff;background:rgba(0,0,0,.82);transform:translateY(100%);transition:transform .2s ease}.json-calendar-entry:hover .json-calendar-details,.json-calendar-entry:focus-within .json-calendar-details{transform:translateY(0)}.json-calendar-title{margin:0 0 .4rem;font-size:1.1rem}.json-calendar-date,.json-calendar-description{display:block;margin:.3rem 0}.json-calendar-link{color:#fff}</style><div class="json-calendar"><ul class="json-calendar-list">';
@@ -96,124 +96,77 @@ final class JSON_Calendar_WP {
 			$image = $this->first_image( $entry );
 			$start_fallback = $this->date_time( $entry, 'date', 'time_start', array( 'start', 'datetime' ) );
 			$end_fallback = $this->date_time( $entry, 'date_end', 'time_end', array( 'end' ) );
-
 			$output .= '<li class="json-calendar-entry" tabindex="0">';
-			if ( $image ) {
-				$output .= '<img class="json-calendar-image" src="' . esc_url( $image ) . '" alt="' . esc_attr( $title ) . '" loading="lazy" />';
-			}
+			if ( $image ) $output .= '<img class="json-calendar-image" src="' . esc_url( $image ) . '" alt="' . esc_attr( $title ) . '" loading="lazy" />';
 			$output .= '<div class="json-calendar-details"><h3 class="json-calendar-title">' . esc_html( $title ) . '</h3>';
 			if ( $date || $date_end || $start_fallback ) {
 				$output .= '<div class="json-calendar-date">';
-				if ( $date ) {
-					$output .= esc_html( $this->format_date_only( $date ) );
-					if ( $date_end && $date_end !== $date ) {
-						$output .= ' – ' . esc_html( $this->format_date_only( $date_end ) );
-					}
-				} else {
-					$output .= esc_html( $this->format_date( $start_fallback ) );
-				}
+				$output .= esc_html( $date ? $this->format_date_only( $date ) : $this->format_date( $start_fallback ) );
+				if ( $date_end && $date_end !== $date ) $output .= ' – ' . esc_html( $this->format_date_only( $date_end ) );
 				$output .= '</div>';
 			}
 			if ( $time_start || $time_end ) {
 				$output .= '<div class="json-calendar-time">' . esc_html( $time_start );
-				if ( $time_end ) {
-					$output .= ' – ' . esc_html( $time_end );
-				}
+				if ( $time_end ) $output .= ' – ' . esc_html( $time_end );
 				$output .= '</div>';
 			} elseif ( $end_fallback && ! $date_end ) {
 				$output .= '<div class="json-calendar-time">' . esc_html( $this->format_date( $end_fallback ) ) . '</div>';
 			}
-			if ( $description ) {
-				$output .= '<div class="json-calendar-description">' . wp_kses_post( $description ) . '</div>';
-			}
-			if ( $link ) {
-				$output .= '<a class="json-calendar-link" href="' . esc_url( $link ) . '" target="_blank" rel="noopener noreferrer">' . esc_html__( 'More information', 'json-calendar-wp' ) . '</a>';
-			}
+			if ( $description ) $output .= '<div class="json-calendar-description">' . wp_kses_post( $description ) . '</div>';
+			if ( $link ) $output .= '<a class="json-calendar-link" href="' . esc_url( $link ) . '" target="_blank" rel="noopener noreferrer">' . esc_html__( 'More information', 'json-calendar-wp' ) . '</a>';
 			$output .= '</div></li>';
 		}
-		$output .= '</ul></div>';
-		return $output;
+		return $output . '</ul></div>';
 	}
 
 	private function get_entries( $data ) {
-		if ( ! is_array( $data ) ) {
-			return array();
-		}
-		if ( isset( $data['entries'] ) && is_array( $data['entries'] ) ) {
-			return $data['entries'];
-		}
-		if ( isset( $data['events'] ) && is_array( $data['events'] ) ) {
-			return $data['events'];
-		}
-		$keys = array_keys( $data );
-		$is_list = empty( $keys ) || $keys === range( 0, count( $keys ) - 1 );
-		if ( $is_list ) {
-			return $data;
-		}
+		if ( ! is_array( $data ) ) return array();
+		if ( isset( $data['entries'] ) && is_array( $data['entries'] ) ) return $this->get_entries( $data['entries'] );
+		if ( isset( $data['events'] ) && is_array( $data['events'] ) ) return $this->get_entries( $data['events'] );
+		if ( $this->is_event( $data ) ) return array( $data );
 		$entries = array();
 		foreach ( $data as $reference => $entry ) {
 			if ( is_array( $entry ) ) {
-				if ( empty( $entry['reference'] ) ) {
-					$entry['reference'] = (string) $reference;
+				foreach ( $this->get_entries( $entry ) as $nested_entry ) {
+					if ( empty( $nested_entry['reference'] ) ) $nested_entry['reference'] = (string) $reference;
+					$entries[] = $nested_entry;
 				}
-				$entries[] = $entry;
 			}
 		}
 		return $entries;
 	}
 
+	private function is_event( $value ) {
+		return is_array( $value ) && ( isset( $value['title'] ) || isset( $value['date'] ) || isset( $value['reference'] ) );
+	}
+
 	private function filter_future_entries( $entries ) {
-		$today = strtotime( 'today' );
+		$today = current_time( 'timestamp' );
+		$today = strtotime( wp_date( 'Y-m-d', $today ) );
 		$filtered = array();
 		foreach ( $entries as $entry ) {
-			if ( ! is_array( $entry ) ) {
-				continue;
-			}
 			$start = $this->get_entry_start_timestamp( $entry );
 			$end = $this->get_entry_end_timestamp( $entry );
-			if ( false === $start && false === $end ) {
-				continue;
-			}
-			if ( ( false !== $start && $start >= $today ) || ( false !== $end && $end >= $today ) ) {
-				$filtered[] = $entry;
-			}
+			if ( ( false !== $start && $start >= $today ) || ( false !== $end && $end >= $today ) ) $filtered[] = $entry;
 		}
-		usort(
-			$filtered,
-			function( $a, $b ) {
-				$left = $this->get_entry_start_timestamp( $a );
-				$right = $this->get_entry_start_timestamp( $b );
-				if ( false === $left ) {
-					$left = $this->get_entry_end_timestamp( $a );
-				}
-				if ( false === $right ) {
-					$right = $this->get_entry_end_timestamp( $b );
-				}
-				if ( false === $left || false === $right ) {
-					return 0;
-				}
-				return $left <=> $right;
-			}
-		);
+		usort( $filtered, function( $a, $b ) {
+			$left = $this->get_entry_start_timestamp( $a );
+			$right = $this->get_entry_start_timestamp( $b );
+			if ( false === $left ) $left = $this->get_entry_end_timestamp( $a );
+			if ( false === $right ) $right = $this->get_entry_end_timestamp( $b );
+			return ( false === $left || false === $right ) ? 0 : $left <=> $right;
+		} );
 		return $filtered;
 	}
 
 	private function get_entry_start_timestamp( $entry ) {
-		$date = $this->value( $entry, array( 'date', 'start_date', 'start', 'datetime' ) );
-		if ( '' === $date ) {
-			return false;
-		}
-		$timestamp = strtotime( $date );
-		return false === $timestamp ? false : $timestamp;
+		$value = $this->value( $entry, array( 'date', 'start_date', 'start', 'datetime' ) );
+		return $value ? strtotime( $value ) : false;
 	}
 
 	private function get_entry_end_timestamp( $entry ) {
-		$date = $this->value( $entry, array( 'date_end', 'end_date', 'end' ) );
-		if ( '' === $date ) {
-			return false;
-		}
-		$timestamp = strtotime( $date );
-		return false === $timestamp ? false : $timestamp;
+		$value = $this->value( $entry, array( 'date_end', 'end_date', 'end' ) );
+		return $value ? strtotime( $value ) : false;
 	}
 
 	private function date_time( $entry, $date_key, $time_key, $fallback_keys ) {
@@ -224,26 +177,18 @@ final class JSON_Calendar_WP {
 
 	private function first_image( $entry ) {
 		$image = isset( $entry['image'] ) ? $entry['image'] : '';
-		if ( is_array( $image ) ) {
-			$image = reset( $image );
-		}
-		return is_scalar( $image ) ? $this->normalise_url( (string) $image ) : '';
+		if ( is_array( $image ) ) $image = reset( $image );
+		return is_scalar( $image ) ? $this->normalise_url( $image ) : '';
 	}
 
 	private function normalise_url( $url ) {
 		$url = trim( (string) $url );
-		if ( $url && ! preg_match( '#^https?://#i', $url ) ) {
-			$url = 'https://' . $url;
-		}
+		if ( $url && ! preg_match( '#^https?://#i', $url ) ) $url = 'https://' . $url;
 		return $url && wp_http_validate_url( $url ) ? $url : '';
 	}
 
 	private function value( $entry, $keys, $default = '' ) {
-		foreach ( $keys as $key ) {
-			if ( isset( $entry[ $key ] ) && is_scalar( $entry[ $key ] ) && '' !== (string) $entry[ $key ] ) {
-				return (string) $entry[ $key ];
-			}
-		}
+		foreach ( $keys as $key ) if ( isset( $entry[ $key ] ) && is_scalar( $entry[ $key ] ) && '' !== (string) $entry[ $key ] ) return (string) $entry[ $key ];
 		return $default;
 	}
 
