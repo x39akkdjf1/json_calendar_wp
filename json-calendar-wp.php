@@ -2,7 +2,7 @@
 /**
  * Plugin Name: JSON Calendar
  * Description: Fetches calendar entries from a JSON endpoint and displays them with the [json_calendar] shortcode.
- * Version: 1.4.1
+ * Version: 1.4.2
  * Author: x39akkdjf1
  * License: GPL-2.0-or-later
  * Requires at least: 5.8
@@ -14,7 +14,7 @@ if ( ! defined( 'ABSPATH' ) ) { exit; }
 final class JSON_Calendar_WP {
 	const OPTION_ENDPOINT = 'json_calendar_wp_endpoint';
 	const SHORTCODE = 'json_calendar';
-	const CACHE_VERSION = '2';
+	const CACHE_VERSION = '3';
 
 	public function __construct() {
 		add_action( 'admin_menu', array( $this, 'add_settings_page' ) );
@@ -57,7 +57,7 @@ final class JSON_Calendar_WP {
 		$cache_key = 'json_calendar_' . self::CACHE_VERSION . '_' . md5( $url );
 		$data = get_transient( $cache_key );
 		if ( false === $data ) {
-			$response = wp_safe_remote_get( $url, array( 'timeout' => 10, 'headers' => array( 'Accept' => 'application/json' ), 'user-agent' => 'JSON Calendar WordPress Plugin/1.4.1' ) );
+			$response = wp_safe_remote_get( $url, array( 'timeout' => 10, 'headers' => array( 'Accept' => 'application/json' ), 'user-agent' => 'JSON Calendar WordPress Plugin/1.4.2' ) );
 			if ( is_wp_error( $response ) || 200 !== wp_remote_retrieve_response_code( $response ) ) return '<p class="json-calendar-error">' . esc_html__( 'Calendar entries are temporarily unavailable.', 'json-calendar-wp' ) . '</p>';
 			$data = json_decode( wp_remote_retrieve_body( $response ), true );
 			if ( JSON_ERROR_NONE !== json_last_error() ) return '<p class="json-calendar-error">' . esc_html__( 'The calendar endpoint returned invalid JSON.', 'json-calendar-wp' ) . '</p>';
@@ -73,16 +73,16 @@ final class JSON_Calendar_WP {
 		$id = esc_attr( $instance );
 		$output = '<style>
 			#' . $id . ' .json-calendar-list{display:grid;grid-template-columns:repeat(auto-fill,minmax(220px,1fr));gap:1rem;list-style:none;margin:0;padding:0}
-			#' . $id . ' .json-calendar-entry{perspective:1000px;min-height:220px;outline:none}
-			#' . $id . ' .json-calendar-card{position:relative;width:100%;height:220px;transform-style:preserve-3d;transition:transform .55s ease;cursor:pointer}
+			#' . $id . ' .json-calendar-entry{perspective:1000px;outline:none}
+			#' . $id . ' .json-calendar-card{position:relative;width:100%;transform-style:preserve-3d;transition:transform .55s ease;cursor:pointer}
 			#' . $id . ' .json-calendar-entry.is-flipped .json-calendar-card,#' . $id . ' .json-calendar-entry:hover .json-calendar-card,#' . $id . ' .json-calendar-entry:focus-within .json-calendar-card{transform:rotateY(180deg)}
-			#' . $id . ' .json-calendar-front,#' . $id . ' .json-calendar-back{position:absolute;inset:0;backface-visibility:hidden;-webkit-backface-visibility:hidden;overflow:hidden;border-radius:4px}
-			#' . $id . ' .json-calendar-front{display:flex;align-items:center;justify-content:center;background:#f5f5f5}
-			#' . $id . ' .json-calendar-image{display:block;width:100%;height:100%;object-fit:contain}
-			#' . $id . ' .json-calendar-back{box-sizing:border-box;padding:1.25rem;background:#fff;color:#000;border:1px solid #ddd;transform:rotateY(180deg);overflow-y:auto}
+			#' . $id . ' .json-calendar-front{position:relative;width:100%;backface-visibility:hidden;-webkit-backface-visibility:hidden;overflow:hidden;border-radius:4px;background:#f5f5f5}
+			#' . $id . ' .json-calendar-back{position:absolute;inset:0;box-sizing:border-box;padding:1.25rem;background:#fff;color:#000;border:1px solid #ddd;border-radius:4px;backface-visibility:hidden;-webkit-backface-visibility:hidden;transform:rotateY(180deg);overflow-y:auto}
+			#' . $id . ' .json-calendar-image{display:block;width:100%;height:auto;object-fit:contain}
 			#' . $id . ' .json-calendar-title{margin:0 0 .7rem;color:#000;font-size:1.35rem;line-height:1.2}
 			#' . $id . ' .json-calendar-date,#' . $id . ' .json-calendar-time{margin:.25rem 0;color:#333;font-family:Arial,Helvetica,sans-serif;font-style:italic;font-size:.85rem}
 			#' . $id . ' .json-calendar-description{margin:.8rem 0;color:#000;font-family:inherit;font-size:1rem;line-height:1.45}
+			@media (hover:hover){#' . $id . ' .json-calendar-entry:hover .json-calendar-card{transform:rotateY(180deg)}}
 		</style><div id="' . $id . '" class="json-calendar"><ul class="json-calendar-list">';
 
 		foreach ( $entries as $entry ) {
