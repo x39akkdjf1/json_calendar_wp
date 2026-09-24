@@ -2,7 +2,7 @@
 /**
  * Plugin Name: JSON Calendar
  * Description: Fetches calendar entries from a JSON endpoint and displays them with the [json_calendar] shortcode.
- * Version: 1.5.0
+ * Version: 1.5.1
  * Author: x39akkdjf1
  * License: GPL-2.0-or-later
  * Requires at least: 5.8
@@ -15,7 +15,7 @@ final class JSON_Calendar_WP {
 	const OPTION_ENDPOINT = 'json_calendar_wp_endpoint';
 	const OPTION_NEXT_HEADING = 'json_calendar_wp_next_heading';
 	const SHORTCODE = 'json_calendar';
-	const CACHE_VERSION = '4';
+	const CACHE_VERSION = '5';
 
 	public function __construct() {
 		add_action( 'admin_menu', array( $this, 'add_settings_page' ) );
@@ -57,18 +57,17 @@ final class JSON_Calendar_WP {
 		$cache_key = 'json_calendar_' . self::CACHE_VERSION . '_' . md5( $url );
 		$data = get_transient( $cache_key );
 		if ( false === $data ) {
-			$response = wp_safe_remote_get( $url, array( 'timeout' => 10, 'headers' => array( 'Accept' => 'application/json' ), 'user-agent' => 'JSON Calendar WordPress Plugin/1.5.0' ) );
+			$response = wp_safe_remote_get( $url, array( 'timeout' => 10, 'headers' => array( 'Accept' => 'application/json' ), 'user-agent' => 'JSON Calendar WordPress Plugin/1.5.1' ) );
 			if ( is_wp_error( $response ) || 200 !== wp_remote_retrieve_response_code( $response ) ) return '<p class="json-calendar-error">' . esc_html__( 'Calendar entries are temporarily unavailable.', 'json-calendar-wp' ) . '</p>';
 			$data = json_decode( wp_remote_retrieve_body( $response ), true );
 			if ( JSON_ERROR_NONE !== json_last_error() ) return '<p class="json-calendar-error">' . esc_html__( 'The calendar endpoint returned invalid JSON.', 'json-calendar-wp' ) . '</p>';
 			set_transient( $cache_key, $data, 15 * MINUTE_IN_SECONDS );
 		}
 
-		$entries = $this->get_entries( $data );
 		$mode = strtolower( (string) $atts['mode'] );
 		$is_next = ( 'true' === strtolower( (string) $atts['next'] ) || '1' === (string) $atts['next'] || 'next' === $mode );
 		$is_archive = ( 'true' === strtolower( (string) $atts['archive'] ) || '1' === (string) $atts['archive'] || 'archive' === $mode );
-		$entries = $is_archive ? $this->filter_past_entries( $entries ) : $this->filter_future_entries( $entries );
+		$entries = $is_archive ? $this->filter_past_entries( $this->get_entries( $data ) ) : $this->filter_future_entries( $this->get_entries( $data ) );
 		if ( $is_next ) $entries = array_slice( $entries, 0, 1 );
 		if ( empty( $entries ) ) return '<p class="json-calendar-empty">' . esc_html( $is_archive ? __( 'No past calendar entries found.', 'json-calendar-wp' ) : __( 'No upcoming calendar entries found.', 'json-calendar-wp' ) ) . '</p>';
 
@@ -77,6 +76,7 @@ final class JSON_Calendar_WP {
 		$instance = wp_unique_id( 'json-calendar-' );
 		$id = esc_attr( $instance );
 		$classes = $is_next ? ' json-calendar-next' : ( $is_archive ? ' json-calendar-archive' : '' );
+
 		$output = '<style>
 			#' . $id . ' .json-calendar-list{display:grid;grid-template-columns:repeat(auto-fill,minmax(220px,1fr));gap:1rem;list-style:none;margin:0;padding:0}
 			#' . $id . ' .json-calendar-entry{position:relative;min-width:0;outline:none}
@@ -87,12 +87,13 @@ final class JSON_Calendar_WP {
 			#' . $id . ' .json-calendar-date,#' . $id . ' .json-calendar-time{margin:.25rem 0;color:#333;font-family:Arial,Helvetica,sans-serif;font-style:italic;font-size:.85rem}
 			#' . $id . ' .json-calendar-description{margin:.8rem 0;color:#000;font-family:inherit;font-size:1rem;line-height:1.45}
 			#' . $id . '.json-calendar-next .json-calendar-list{display:block}
-			#' . $id . '.json-calendar-next .json-calendar-entry{max-width:100%;}
-			#' . $id . '.json-calendar-next .json-calendar-card{position:relative}
-			#' . $id . '.json-calendar-next .json-calendar-image{width:100%;max-height:none}
-			#' . $id . '.json-calendar-next .json-calendar-details{position:absolute;left:0;bottom:0;max-width:75%;background:rgba(255,255,255,.94)}
-			#' . $id . '.json-calendar-next .json-calendar-next-heading{position:absolute;z-index:2;left:0;top:1.5rem;margin:0;padding:.35rem .7rem;background:#fff;color:#000;font-size:clamp(2rem,5vw,4.5rem);line-height:1;font-weight:700}
-			#' . $id . '.json-calendar-next .json-calendar-next-heading + .json-calendar-card{margin-top:0}
+			#' . $id . '.json-calendar-next .json-calendar-entry{width:100%;max-width:none}
+			#' . $id . '.json-calendar-next .json-calendar-card{background:#111}
+			#' . $id . '.json-calendar-next .json-calendar-image{display:block;width:100%;height:clamp(300px,62vw,760px);object-fit:cover;object-position:center}
+			#' . $id . '.json-calendar-next .json-calendar-details{position:absolute;left:0;bottom:0;max-width:min(75%,700px);padding:1rem 1.5rem 1.25rem;background:#fff;color:#000}
+			#' . $id . '.json-calendar-next .json-calendar-title{margin:0;font-family:Arial,Helvetica,sans-serif;font-size:clamp(1.5rem,4vw,3.5rem);font-weight:800;line-height:1.02;letter-spacing:-.035em;text-transform:none}
+			#' . $id . '.json-calendar-next .json-calendar-next-heading{position:absolute;z-index:2;left:0;top:1.5rem;margin:0;padding:.25rem .65rem;background:#fff;color:#000;font-family:Arial,Helvetica,sans-serif;font-size:clamp(2rem,7vw,6rem);font-weight:900;line-height:.9;letter-spacing:-.06em;text-transform:uppercase}
+			#' . $id . '.json-calendar-next .json-calendar-next-heading + .json-calendar-image{margin-top:0}
 		</style><div id="' . $id . '" class="json-calendar' . esc_attr( $classes ) . '"><ul class="json-calendar-list">';
 
 		foreach ( $entries as $entry ) {
@@ -105,13 +106,20 @@ final class JSON_Calendar_WP {
 			$description = $this->value( $entry, array( 'description', 'details', 'content' ) );
 			$image = $this->first_image( $entry );
 			$start_fallback = $this->date_time( $entry, 'date', 'time_start', array( 'start', 'datetime' ) );
+
 			$output .= '<li class="json-calendar-entry"><div class="json-calendar-card">';
-			if ( $is_next ) $output .= '<h1 class="json-calendar-next-heading">' . esc_html( get_option( self::OPTION_NEXT_HEADING, __( 'Next up', 'json-calendar-wp' ) ) ) . '</h1>';
-			if ( $image ) $output .= '<img class="json-calendar-image" src="' . esc_url( $image ) . '" alt="' . esc_attr( $title ) . '" loading="lazy" />';
+			if ( $is_next ) {
+				$output .= '<h1 class="json-calendar-next-heading">' . esc_html( get_option( self::OPTION_NEXT_HEADING, __( 'Next up', 'json-calendar-wp' ) ) ) . '</h1>';
+			}
+			if ( $image ) {
+				$output .= '<img class="json-calendar-image" src="' . esc_url( $image ) . '" alt="' . esc_attr( $title ) . '" loading="lazy" />';
+			}
 			$output .= '<div class="json-calendar-details"><h2 class="json-calendar-title">' . esc_html( $title ) . '</h2>';
-			if ( $date || $date_end || $start_fallback ) { $output .= '<div class="json-calendar-date">' . esc_html( $date ? $this->format_date_only( $date ) : $this->format_date( $start_fallback ) ); if ( $date_end && $date_end !== $date ) $output .= ' – ' . esc_html( $this->format_date_only( $date_end ) ); $output .= '</div>'; }
-			if ( $time_start || $time_end ) { $output .= '<div class="json-calendar-time">' . esc_html( $time_start ); if ( $time_end ) $output .= ' – ' . esc_html( $time_end ); $output .= '</div>'; }
-			if ( $description ) $output .= '<p class="json-calendar-description">' . wp_kses_post( $description ) . '</p>';
+			if ( ! $is_next ) {
+				if ( $date || $date_end || $start_fallback ) { $output .= '<div class="json-calendar-date">' . esc_html( $date ? $this->format_date_only( $date ) : $this->format_date( $start_fallback ) ); if ( $date_end && $date_end !== $date ) $output .= ' – ' . esc_html( $this->format_date_only( $date_end ) ); $output .= '</div>'; }
+				if ( $time_start || $time_end ) { $output .= '<div class="json-calendar-time">' . esc_html( $time_start ); if ( $time_end ) $output .= ' – ' . esc_html( $time_end ); $output .= '</div>'; }
+				if ( $description ) $output .= '<p class="json-calendar-description">' . wp_kses_post( $description ) . '</p>';
+			}
 			$output .= '</div></div></li>';
 		}
 		return $output . '</ul></div>';
