@@ -17,6 +17,7 @@ final class JSON_Calendar_WP {
 	const OPTION_LAST_SYNC = 'json_calendar_wp_last_sync';
 	const OPTION_LAST_SYNC_COUNT = 'json_calendar_wp_last_sync_count';
 	const OPTION_LAST_SYNC_ERROR = 'json_calendar_wp_last_sync_error';
+	const OPTION_SCHEDULE_LOCK = 'json_calendar_wp_schedule_lock';
 	const SHORTCODE = 'json_calendar';
 	const CACHE_VERSION = '13';
 	const POST_TYPE = 'json_calendar_event';
@@ -40,6 +41,7 @@ final class JSON_Calendar_WP {
 		add_action( 'admin_init', array( $this, 'register_settings' ) );
 		add_filter( 'cron_schedules', array( $this, 'add_cron_schedule' ) );
 		add_action( 'init', array( $this, 'register_post_type' ) );
+		add_action( 'init', array( $this, 'ensure_cron_schedule' ) );
 		add_action( self::CRON_HOOK, array( $this, 'run_scheduled_sync' ) );
 		add_action( 'template_redirect', array( $this, 'maybe_resolve_event_404' ), 1 );
 		add_action( 'admin_post_json_calendar_wp_sync_now', array( $this, 'handle_manual_sync' ) );
@@ -100,7 +102,20 @@ final class JSON_Calendar_WP {
 
 	public function ensure_cron_schedule() {
 		if ( ! wp_next_scheduled( self::CRON_HOOK ) ) {
+			$now = time();
+			$lock = absint( get_option( self::OPTION_SCHEDULE_LOCK, 0 ) );
+			if ( $lock && $lock > ( $now - MINUTE_IN_SECONDS ) ) {
+				return;
+			}
+			if ( ! add_option( self::OPTION_SCHEDULE_LOCK, $now, '', false ) ) {
+				update_option( self::OPTION_SCHEDULE_LOCK, $now, false );
+			}
+			if ( wp_next_scheduled( self::CRON_HOOK ) ) {
+				delete_option( self::OPTION_SCHEDULE_LOCK );
+				return;
+			}
 			wp_schedule_event( time() + MINUTE_IN_SECONDS, self::CRON_SCHEDULE, self::CRON_HOOK );
+			delete_option( self::OPTION_SCHEDULE_LOCK );
 		}
 	}
 
@@ -294,7 +309,7 @@ final class JSON_Calendar_WP {
 		$url = esc_url_raw( $url );
 		$entries = is_array( $entries ) ? $entries : array();
 		$seen = array();
-		$count = 0;
+		$processed_post_ids = array();
 		$errors = array();
 
 		foreach ( $entries as $entry ) {
@@ -307,7 +322,7 @@ final class JSON_Calendar_WP {
 				continue;
 			}
 
-			$seen[] = $reference;
+			$seen[ $reference ] = true;
 			$post_id = $this->upsert_event_post( $entry, $url, $reference );
 			if ( is_wp_error( $post_id ) ) {
 				$errors[] = $post_id->get_error_message();
@@ -315,11 +330,12 @@ final class JSON_Calendar_WP {
 			}
 
 			if ( $post_id ) {
-				++$count;
+				$processed_post_ids[ $post_id ] = true;
 			}
 		}
 
-		$trashed = $this->trash_missing_events( $url, $seen );
+		$count = count( $processed_post_ids );
+		$trashed = $this->trash_missing_events( $url, array_keys( $seen ) );
 		$result = array( 'count' => $count, 'trashed' => $trashed );
 		$error = $errors ? new WP_Error( 'sync_failed', implode( ' ', array_unique( $errors ) ) ) : null;
 
