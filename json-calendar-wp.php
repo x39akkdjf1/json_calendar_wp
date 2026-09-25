@@ -26,7 +26,7 @@ final class JSON_Calendar_WP {
 	const REWRITE_SLUG = 'json-calendar-event';
 	const CRON_HOOK = 'json_calendar_wp_sync_events';
 	const CRON_SCHEDULE = 'json_calendar_15_minutes';
-	private $current_rest_request = null;
+	private $rest_request_stack = array();
 
 	// These keys stay underscore-prefixed so sync bookkeeping stays out of the classic Custom Fields UI.
 	// Elementor Dynamic Tags and ACF can still read them directly as normal post meta values.
@@ -49,6 +49,7 @@ final class JSON_Calendar_WP {
 		add_action( self::CRON_HOOK, array( $this, 'run_scheduled_sync' ) );
 		add_action( 'admin_post_json_calendar_wp_sync_now', array( $this, 'handle_manual_sync' ) );
 		add_filter( 'rest_pre_dispatch', array( $this, 'capture_rest_request' ), 10, 3 );
+		add_filter( 'rest_post_dispatch', array( $this, 'release_rest_request' ), 10, 3 );
 		add_action( 'wp_enqueue_scripts', array( $this, 'register_shortcode_style' ) );
 		add_action( 'enqueue_block_assets', array( $this, 'register_shortcode_style' ) );
 		add_shortcode( self::SHORTCODE, array( $this, 'render_shortcode' ) );
@@ -135,7 +136,15 @@ final class JSON_Calendar_WP {
 
 	public function capture_rest_request( $result, $server, $request ) {
 		if ( $request instanceof WP_REST_Request ) {
-			$this->current_rest_request = $request;
+			$this->rest_request_stack[] = $request;
+		}
+
+		return $result;
+	}
+
+	public function release_rest_request( $result, $server, $request ) {
+		if ( $request instanceof WP_REST_Request ) {
+			array_pop( $this->rest_request_stack );
 		}
 
 		return $result;
@@ -846,15 +855,21 @@ final class JSON_Calendar_WP {
 			return false;
 		}
 
-		if ( ! ( $this->current_rest_request instanceof WP_REST_Request ) ) {
+		$current_rest_request = end( $this->rest_request_stack );
+		if ( ! ( $current_rest_request instanceof WP_REST_Request ) ) {
 			return false;
 		}
 
-		$request_path = '/' . trim( (string) $this->current_rest_request->get_route(), '/' );
+		$request_path = '/' . trim( (string) $current_rest_request->get_route(), '/' );
 
 		$preview_post_id = 0;
 		$preview_post_type = '';
-		$preview_context = $this->current_rest_request->get_param( 'context' );
+		$preview_context = $current_rest_request->get_param( 'context' );
+		$preview_attributes = $current_rest_request->get_param( 'attributes' );
+
+		if ( ! is_array( $preview_context ) && is_array( $preview_attributes ) && isset( $preview_attributes['context'] ) && is_array( $preview_attributes['context'] ) ) {
+			$preview_context = $preview_attributes['context'];
+		}
 
 		if ( is_array( $preview_context ) ) {
 			if ( isset( $preview_context['postId'] ) ) {
@@ -870,12 +885,12 @@ final class JSON_Calendar_WP {
 			}
 		}
 
-		$post_id_input = $this->current_rest_request->get_param( 'post_id' );
+		$post_id_input = $current_rest_request->get_param( 'post_id' );
 		if ( ! $preview_post_id && null !== $post_id_input ) {
 			$preview_post_id = absint( $post_id_input );
 		}
 
-		$post_type_input = $this->current_rest_request->get_param( 'post_type' );
+		$post_type_input = $current_rest_request->get_param( 'post_type' );
 		if ( '' === $preview_post_type && null !== $post_type_input ) {
 			$preview_post_type = sanitize_key( $post_type_input );
 		}
