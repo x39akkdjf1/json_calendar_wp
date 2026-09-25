@@ -259,7 +259,7 @@ final class JSON_Calendar_WP {
 			} else {
 				if ( $image && $event_url ) {
 					$card_label = sprintf( __( 'Mehr: %s', 'json-calendar-wp' ), $title );
-					$output .= '<a class="json-calendar-card-link" href="' . esc_url( $event_url ) . '" title="' . esc_attr( $card_label ) . '"><img class="json-calendar-image" src="' . esc_url( $image ) . '" alt="' . esc_attr( $title ) . '" loading="lazy" /><span class="json-calendar-card-overlay" aria-hidden="true">' . esc_html__( 'Mehr', 'json-calendar-wp' ) . '</span></a>';
+					$output .= '<a class="json-calendar-card-link" href="' . esc_url( $event_url ) . '" aria-label="' . esc_attr( $card_label ) . '" title="' . esc_attr( $card_label ) . '"><img class="json-calendar-image" src="' . esc_url( $image ) . '" alt="" loading="lazy" /><span class="json-calendar-card-overlay" aria-hidden="true">' . esc_html__( 'Mehr', 'json-calendar-wp' ) . '</span></a>';
 				} else {
 					if ( $image ) $output .= '<img class="json-calendar-image" src="' . esc_url( $image ) . '" alt="' . esc_attr( $title ) . '" loading="lazy" />';
 					$output .= '<div class="json-calendar-details"><h2 class="json-calendar-title">' . ( $event_url ? '<a href="' . esc_url( $event_url ) . '">' . esc_html( $title ) . '</a>' : esc_html( $title ) ) . '</h2>';
