@@ -759,7 +759,7 @@ final class JSON_Calendar_WP {
 	private function get_current_event_post_id() {
 		$post_id = get_queried_object_id();
 		$queried_object = get_queried_object();
-		$is_event_preview = defined( 'REST_REQUEST' ) && REST_REQUEST && $queried_object instanceof WP_Post && self::POST_TYPE === $queried_object->post_type;
+		$is_event_preview = $this->is_site_editor_shortcode_preview( $queried_object );
 
 		if ( ! is_singular( self::POST_TYPE ) && ! $is_event_preview ) {
 			return 0;
@@ -793,6 +793,31 @@ final class JSON_Calendar_WP {
 		$classes = array_filter( array_unique( $classes ) );
 
 		return implode( ' ', $classes );
+	}
+
+	private function is_site_editor_shortcode_preview( $queried_object ) {
+		if ( ! ( defined( 'REST_REQUEST' ) && REST_REQUEST ) ) {
+			return false;
+		}
+
+		if ( ! ( $queried_object instanceof WP_Post ) || self::POST_TYPE !== $queried_object->post_type ) {
+			return false;
+		}
+
+		$context = isset( $_REQUEST['context'] ) ? sanitize_key( wp_unslash( $_REQUEST['context'] ) ) : '';
+		$request_path = '';
+
+		if ( isset( $_REQUEST['rest_route'] ) ) {
+			$request_path = (string) wp_unslash( $_REQUEST['rest_route'] );
+		} elseif ( isset( $_SERVER['REQUEST_URI'] ) ) {
+			$request_path = (string) wp_unslash( $_SERVER['REQUEST_URI'] );
+		}
+
+		$preview_post_id = isset( $_REQUEST['post_id'] ) ? absint( wp_unslash( $_REQUEST['post_id'] ) ) : 0;
+
+		return 'edit' === $context
+			&& false !== strpos( $request_path, 'block-renderer/core/shortcode' )
+			&& ( ! $preview_post_id || $preview_post_id === (int) $queried_object->ID );
 	}
 }
 
