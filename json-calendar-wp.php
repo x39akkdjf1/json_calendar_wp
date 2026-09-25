@@ -348,13 +348,15 @@ final class JSON_Calendar_WP {
 		if ( $date ) {
 			$formatted_date = $this->format_date_only( $date );
 			$normalized_date = $this->source_date_only( $date );
-			$post_content .= '<p class="json-calendar-event-date"><strong>' . esc_html__( 'Date:', 'json-calendar-wp' ) . '</strong> <time datetime="' . esc_attr( $date ) . '">' . esc_html( $formatted_date ) . '</time>';
+			$date_datetime = $this->machine_date_value( $date );
+			$post_content .= '<p class="json-calendar-event-date"><strong>' . esc_html__( 'Date:', 'json-calendar-wp' ) . '</strong> <time' . ( $date_datetime ? ' datetime="' . esc_attr( $date_datetime ) . '"' : '' ) . '>' . esc_html( $formatted_date ) . '</time>';
 
 			if ( $end && $end !== $date ) {
 				$formatted_end = $this->format_date_only( $end );
 				$normalized_end = $this->source_date_only( $end );
 				if ( $normalized_end !== $normalized_date ) {
-					$post_content .= ' – <time datetime="' . esc_attr( $end ) . '">' . esc_html( $formatted_end ) . '</time>';
+					$end_datetime = $this->machine_date_value( $end );
+					$post_content .= ' – <time' . ( $end_datetime ? ' datetime="' . esc_attr( $end_datetime ) . '"' : '' ) . '>' . esc_html( $formatted_end ) . '</time>';
 				}
 			}
 
@@ -365,12 +367,14 @@ final class JSON_Calendar_WP {
 			$post_content .= '<p class="json-calendar-event-time"><strong>' . esc_html__( 'Time:', 'json-calendar-wp' ) . '</strong> ';
 
 			if ( $time_start ) {
-				$post_content .= '<time datetime="' . esc_attr( $time_start ) . '">' . esc_html( $time_start ) . '</time>';
+				$time_start_datetime = $this->machine_time_value( $time_start );
+				$post_content .= '<time' . ( $time_start_datetime ? ' datetime="' . esc_attr( $time_start_datetime ) . '"' : '' ) . '>' . esc_html( $time_start ) . '</time>';
 			}
 
 			if ( $time_end ) {
 				$post_content .= $time_start ? ' – ' : '';
-				$post_content .= '<time datetime="' . esc_attr( $time_end ) . '">' . esc_html( $time_end ) . '</time>';
+				$time_end_datetime = $this->machine_time_value( $time_end );
+				$post_content .= '<time' . ( $time_end_datetime ? ' datetime="' . esc_attr( $time_end_datetime ) . '"' : '' ) . '>' . esc_html( $time_end ) . '</time>';
 			}
 
 			$post_content .= '</p>';
@@ -613,6 +617,8 @@ final class JSON_Calendar_WP {
 	private function is_event( $value ) { return is_array( $value ) && ( isset( $value['title'] ) || isset( $value['date'] ) || isset( $value['reference'] ) ); }
 	private function today() { return strtotime( wp_date( 'Y-m-d', current_time( 'timestamp' ) ) ); }
 	private function timestamp( $entry, $keys ) { $value = $this->value( $entry, $keys ); return $value ? strtotime( $value ) : false; }
+	private function machine_date_value( $date ) { try { $value = trim( (string) $date ); if ( preg_match( '/^(\d{4}-\d{2}-\d{2})/', $value, $matches ) ) return $matches[1]; $datetime = new DateTimeImmutable( $value ); return $datetime->format( 'Y-m-d' ); } catch ( Exception $exception ) { return ''; } }
+	private function machine_time_value( $time ) { try { $datetime = new DateTimeImmutable( trim( (string) $time ) ); return $datetime->format( 'H:i:s' ); } catch ( Exception $exception ) { return ''; } }
 	private function source_date_only( $date ) { return preg_match( '/^\s*(\d{4}-\d{2}-\d{2})/', (string) $date, $matches ) ? $matches[1] : trim( (string) $date ); }
 	private function filter_upcoming( $entries ) { $today = $this->today(); $result = array_filter( $entries, function( $entry ) use ( $today ) { $start = $this->timestamp( $entry, array( 'date', 'start_date', 'start', 'datetime' ) ); $end = $this->timestamp( $entry, array( 'date_end', 'end_date', 'end' ) ); return ( false !== $start && $start >= $today ) || ( false !== $end && $end >= $today ); } ); return $this->sort_entries( $result ); }
 	private function filter_past( $entries ) { $today = $this->today(); $result = array_filter( $entries, function( $entry ) use ( $today ) { $end = $this->timestamp( $entry, array( 'date_end', 'end_date', 'end' ) ); $start = $this->timestamp( $entry, array( 'date', 'start_date', 'start', 'datetime' ) ); return false !== $end ? $end < $today : ( false !== $start && $start < $today ); } ); return $this->sort_entries( $result, true ); }
