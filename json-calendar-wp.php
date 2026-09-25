@@ -363,12 +363,12 @@ final class JSON_Calendar_WP {
 			$post_content .= '<p class="json-calendar-event-time"><strong>' . esc_html__( 'Time:', 'json-calendar-wp' ) . '</strong> ';
 
 			if ( $time_start ) {
-				$post_content .= '<time>' . esc_html( $time_start ) . '</time>';
+				$post_content .= '<time datetime="' . esc_attr( $time_start ) . '">' . esc_html( $time_start ) . '</time>';
 			}
 
 			if ( $time_end ) {
 				$post_content .= $time_start ? ' – ' : '';
-				$post_content .= '<time>' . esc_html( $time_end ) . '</time>';
+				$post_content .= '<time datetime="' . esc_attr( $time_end ) . '">' . esc_html( $time_end ) . '</time>';
 			}
 
 			$post_content .= '</p>';
