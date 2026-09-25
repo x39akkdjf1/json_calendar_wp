@@ -762,7 +762,11 @@ final class JSON_Calendar_WP {
 		$queried_object = get_queried_object();
 		$is_event_preview = $this->is_site_editor_shortcode_preview( $queried_object );
 
-		if ( ! is_singular( self::POST_TYPE ) && ! $is_event_preview ) {
+		if ( $is_event_preview && $queried_object instanceof WP_Post ) {
+			return (int) $queried_object->ID;
+		}
+
+		if ( ! is_singular( self::POST_TYPE ) ) {
 			return 0;
 		}
 
