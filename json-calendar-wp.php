@@ -347,11 +347,13 @@ final class JSON_Calendar_WP {
 
 		if ( $date ) {
 			$formatted_date = $this->format_date_only( $date );
+			$normalized_date = strtotime( $date );
 			$post_content .= '<p class="json-calendar-event-date"><strong>' . esc_html__( 'Date:', 'json-calendar-wp' ) . '</strong> <time datetime="' . esc_attr( $date ) . '">' . esc_html( $formatted_date ) . '</time>';
 
 			if ( $end && $end !== $date ) {
 				$formatted_end = $this->format_date_only( $end );
-				if ( $formatted_end !== $formatted_date ) {
+				$normalized_end = strtotime( $end );
+				if ( false === $normalized_date || false === $normalized_end || wp_date( 'Y-m-d', $normalized_end ) !== wp_date( 'Y-m-d', $normalized_date ) ) {
 					$post_content .= ' – <time datetime="' . esc_attr( $end ) . '">' . esc_html( $formatted_end ) . '</time>';
 				}
 			}
