@@ -347,13 +347,13 @@ final class JSON_Calendar_WP {
 
 		if ( $date ) {
 			$formatted_date = $this->format_date_only( $date );
-			$normalized_date = strtotime( $date );
+			$normalized_date = $this->source_date_only( $date );
 			$post_content .= '<p class="json-calendar-event-date"><strong>' . esc_html__( 'Date:', 'json-calendar-wp' ) . '</strong> <time datetime="' . esc_attr( $date ) . '">' . esc_html( $formatted_date ) . '</time>';
 
 			if ( $end && $end !== $date ) {
 				$formatted_end = $this->format_date_only( $end );
-				$normalized_end = strtotime( $end );
-				if ( false === $normalized_date || false === $normalized_end || wp_date( 'Y-m-d', $normalized_end ) !== wp_date( 'Y-m-d', $normalized_date ) ) {
+				$normalized_end = $this->source_date_only( $end );
+				if ( $normalized_end !== $normalized_date ) {
 					$post_content .= ' – <time datetime="' . esc_attr( $end ) . '">' . esc_html( $formatted_end ) . '</time>';
 				}
 			}
@@ -613,6 +613,7 @@ final class JSON_Calendar_WP {
 	private function is_event( $value ) { return is_array( $value ) && ( isset( $value['title'] ) || isset( $value['date'] ) || isset( $value['reference'] ) ); }
 	private function today() { return strtotime( wp_date( 'Y-m-d', current_time( 'timestamp' ) ) ); }
 	private function timestamp( $entry, $keys ) { $value = $this->value( $entry, $keys ); return $value ? strtotime( $value ) : false; }
+	private function source_date_only( $date ) { return preg_match( '/^\s*(\d{4}-\d{2}-\d{2})/', (string) $date, $matches ) ? $matches[1] : trim( (string) $date ); }
 	private function filter_upcoming( $entries ) { $today = $this->today(); $result = array_filter( $entries, function( $entry ) use ( $today ) { $start = $this->timestamp( $entry, array( 'date', 'start_date', 'start', 'datetime' ) ); $end = $this->timestamp( $entry, array( 'date_end', 'end_date', 'end' ) ); return ( false !== $start && $start >= $today ) || ( false !== $end && $end >= $today ); } ); return $this->sort_entries( $result ); }
 	private function filter_past( $entries ) { $today = $this->today(); $result = array_filter( $entries, function( $entry ) use ( $today ) { $end = $this->timestamp( $entry, array( 'date_end', 'end_date', 'end' ) ); $start = $this->timestamp( $entry, array( 'date', 'start_date', 'start', 'datetime' ) ); return false !== $end ? $end < $today : ( false !== $start && $start < $today ); } ); return $this->sort_entries( $result, true ); }
 	private function sort_entries( $entries, $reverse = false ) { usort( $entries, function( $a, $b ) use ( $reverse ) { $x = $this->timestamp( $a, array( 'date', 'start_date', 'start', 'datetime', 'date_end', 'end_date', 'end' ) ); $y = $this->timestamp( $b, array( 'date', 'start_date', 'start', 'datetime', 'date_end', 'end_date', 'end' ) ); $r = ( false === $x || false === $y ) ? 0 : ( $x <=> $y ); return $reverse ? -$r : $r; } ); return array_values( $entries ); }
