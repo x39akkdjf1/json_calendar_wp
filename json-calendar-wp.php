@@ -759,6 +759,11 @@ final class JSON_Calendar_WP {
 	private function get_current_event_post_id() {
 		$post_id = get_queried_object_id();
 		$queried_object = get_queried_object();
+		$is_event_preview = defined( 'REST_REQUEST' ) && REST_REQUEST && $queried_object instanceof WP_Post && self::POST_TYPE === $queried_object->post_type;
+
+		if ( ! is_singular( self::POST_TYPE ) && ! $is_event_preview ) {
+			return 0;
+		}
 
 		if ( $queried_object instanceof WP_Post && self::POST_TYPE === $queried_object->post_type ) {
 			return (int) $queried_object->ID;
