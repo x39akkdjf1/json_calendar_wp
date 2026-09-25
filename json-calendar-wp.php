@@ -40,8 +40,8 @@ final class JSON_Calendar_WP {
 		add_action( 'admin_init', array( $this, 'register_settings' ) );
 		add_filter( 'cron_schedules', array( $this, 'add_cron_schedule' ) );
 		add_action( 'init', array( $this, 'register_post_type' ) );
-		add_action( 'init', array( $this, 'ensure_cron_schedule' ) );
 		add_action( self::CRON_HOOK, array( $this, 'run_scheduled_sync' ) );
+		add_action( 'template_redirect', array( $this, 'maybe_resolve_event_404' ), 1 );
 		add_action( 'admin_post_json_calendar_wp_sync_now', array( $this, 'handle_manual_sync' ) );
 		add_shortcode( self::SHORTCODE, array( $this, 'render_shortcode' ) );
 	}
@@ -108,6 +108,42 @@ final class JSON_Calendar_WP {
 		$endpoint = get_option( self::OPTION_ENDPOINT, '' );
 		if ( $endpoint ) {
 			$this->sync_endpoint( $endpoint, true, true );
+		}
+	}
+
+	public function maybe_resolve_event_404() {
+		if ( ! is_404() ) {
+			return;
+		}
+
+		$request_uri = isset( $_SERVER['REQUEST_URI'] ) ? wp_unslash( $_SERVER['REQUEST_URI'] ) : '';
+		$request_path = $request_uri ? wp_parse_url( $request_uri, PHP_URL_PATH ) : '';
+		$home_path = (string) wp_parse_url( home_url( '/' ), PHP_URL_PATH );
+
+		if ( $home_path && 0 === strpos( $request_path, $home_path ) ) {
+			$request_path = substr( $request_path, strlen( $home_path ) );
+		}
+
+		$request_path = trim( (string) $request_path, '/' );
+		if ( ! preg_match( '#^json-calendar-event/([^/]+)$#', $request_path, $matches ) ) {
+			return;
+		}
+
+		$reference = sanitize_title( $matches[1] );
+		$post_id = $this->find_event_post_id( $reference, array( 'publish' ) );
+		if ( ! $post_id ) {
+			$endpoint = get_option( self::OPTION_ENDPOINT, '' );
+			if ( $endpoint ) {
+				$result = $this->sync_endpoint( $endpoint, true, false );
+				if ( ! is_wp_error( $result ) ) {
+					$post_id = $this->find_event_post_id( $reference, array( 'publish' ) );
+				}
+			}
+		}
+
+		if ( $post_id ) {
+			wp_safe_redirect( get_permalink( $post_id ), 301 );
+			exit;
 		}
 	}
 
@@ -237,6 +273,7 @@ final class JSON_Calendar_WP {
 		set_transient( $key, 1, 15 * MINUTE_IN_SECONDS );
 		$result = $this->sync_entries( $url, $entries, $url === esc_url_raw( get_option( self::OPTION_ENDPOINT, '' ) ) );
 		if ( is_wp_error( $result ) && $url === esc_url_raw( get_option( self::OPTION_ENDPOINT, '' ) ) ) {
+			delete_transient( $key );
 			update_option( self::OPTION_LAST_SYNC_ERROR, $result->get_error_message(), false );
 		}
 	}
@@ -466,6 +503,9 @@ final class JSON_Calendar_WP {
 	private function get_event_url( $entry, $source_url = '' ) {
 		$reference = $this->get_event_reference( $entry );
 		$post_id = $this->find_event_post_id( $reference, array( 'publish' ), $source_url );
+		if ( ! $post_id ) {
+			$post_id = $this->find_event_post_id( $reference, array( 'publish' ) );
+		}
 		return $post_id ? get_permalink( $post_id ) : home_url( '/json-calendar-event/' . rawurlencode( $reference ) . '/' );
 	}
 
