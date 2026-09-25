@@ -21,6 +21,7 @@ final class JSON_Calendar_WP {
 	const SHORTCODE = 'json_calendar';
 	const CACHE_VERSION = '13';
 	const POST_TYPE = 'json_calendar_event';
+	const REWRITE_SLUG = 'json-calendar-event';
 	const CRON_HOOK = 'json_calendar_wp_sync_events';
 	const CRON_SCHEDULE = 'json_calendar_15_minutes';
 
@@ -81,7 +82,7 @@ final class JSON_Calendar_WP {
 				'show_in_rest' => true,
 				'has_archive' => false,
 				'rewrite' => array(
-					'slug' => 'json-calendar-event',
+					'slug' => self::REWRITE_SLUG,
 					'with_front' => false,
 				),
 				'supports' => array( 'title', 'editor', 'thumbnail' ),
@@ -140,7 +141,7 @@ final class JSON_Calendar_WP {
 		}
 
 		$request_path = trim( (string) $request_path, '/' );
-		if ( ! preg_match( '#^json-calendar-event/([^/]+)$#', $request_path, $matches ) ) {
+		if ( ! preg_match( '#^' . preg_quote( self::REWRITE_SLUG, '#' ) . '/([^/]+)$#', $request_path, $matches ) ) {
 			return;
 		}
 
@@ -348,10 +349,10 @@ final class JSON_Calendar_WP {
 			}
 		}
 
-		$count = count( $processed_post_ids );
-		$trashed = $this->trash_missing_events( $url, array_keys( $seen ) );
-		$result = array( 'count' => $count + $trashed, 'synced' => $count, 'trashed' => $trashed );
 		$error = $errors ? new WP_Error( 'sync_failed', implode( ' ', array_unique( $errors ) ) ) : null;
+		$count = count( $processed_post_ids );
+		$trashed = $error ? 0 : $this->trash_missing_events( $url, array_keys( $seen ) );
+		$result = array( 'count' => $count + $trashed, 'synced' => $count, 'trashed' => $trashed );
 
 		if ( $update_status ) {
 			update_option( self::OPTION_LAST_SYNC, current_time( 'timestamp' ), false );
@@ -458,6 +459,16 @@ final class JSON_Calendar_WP {
 		}
 
 		$statuses = array( 'publish', 'draft', 'pending', 'future', 'private' );
+		$status_placeholders = implode( ', ', array_fill( 0, count( $statuses ), '%s' ) );
+		$query_args = array_merge(
+			array(
+				self::META_SOURCE_URL,
+				self::META_REFERENCE,
+				self::POST_TYPE,
+			),
+			$statuses,
+			array( $url )
+		);
 		$results = $wpdb->get_results(
 			$wpdb->prepare(
 				"SELECT posts.ID AS post_id, reference.meta_value AS reference
@@ -465,17 +476,9 @@ final class JSON_Calendar_WP {
 				INNER JOIN {$wpdb->postmeta} AS source ON posts.ID = source.post_id AND source.meta_key = %s
 				INNER JOIN {$wpdb->postmeta} AS reference ON posts.ID = reference.post_id AND reference.meta_key = %s
 				WHERE posts.post_type = %s
-				AND posts.post_status IN (%s, %s, %s, %s, %s)
+				AND posts.post_status IN ({$status_placeholders})
 				AND source.meta_value = %s",
-				self::META_SOURCE_URL,
-				self::META_REFERENCE,
-				self::POST_TYPE,
-				$statuses[0],
-				$statuses[1],
-				$statuses[2],
-				$statuses[3],
-				$statuses[4],
-				$url
+				$query_args
 			),
 			ARRAY_A
 		);
@@ -546,7 +549,7 @@ final class JSON_Calendar_WP {
 		if ( ! $post_id ) {
 			$post_id = $this->find_event_post_id( $reference, array( 'publish' ) );
 		}
-		return $post_id ? get_permalink( $post_id ) : home_url( '/json-calendar-event/' . rawurlencode( $reference ) . '/' );
+		return $post_id ? get_permalink( $post_id ) : home_url( '/' . self::REWRITE_SLUG . '/' . rawurlencode( $reference ) . '/' );
 	}
 
 	private function find_event_post_id( $reference, $post_status = array( 'publish' ), $source_url = '' ) {
