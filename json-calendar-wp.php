@@ -347,12 +347,12 @@ final class JSON_Calendar_WP {
 
 		if ( $date ) {
 			$formatted_date = $this->format_date_only( $date );
-			$post_content .= '<p class="json-calendar-event-date"><strong>' . esc_html__( 'Date:', 'json-calendar-wp' ) . '</strong> ' . esc_html( $formatted_date );
+			$post_content .= '<p class="json-calendar-event-date"><strong>' . esc_html__( 'Date:', 'json-calendar-wp' ) . '</strong> <time datetime="' . esc_attr( $date ) . '">' . esc_html( $formatted_date ) . '</time>';
 
 			if ( $end && $end !== $date ) {
 				$formatted_end = $this->format_date_only( $end );
 				if ( $formatted_end !== $formatted_date ) {
-					$post_content .= ' – ' . esc_html( $formatted_end );
+					$post_content .= ' – <time datetime="' . esc_attr( $end ) . '">' . esc_html( $formatted_end ) . '</time>';
 				}
 			}
 
@@ -363,12 +363,12 @@ final class JSON_Calendar_WP {
 			$post_content .= '<p class="json-calendar-event-time"><strong>' . esc_html__( 'Time:', 'json-calendar-wp' ) . '</strong> ';
 
 			if ( $time_start ) {
-				$post_content .= esc_html( $time_start );
+				$post_content .= '<time>' . esc_html( $time_start ) . '</time>';
 			}
 
 			if ( $time_end ) {
 				$post_content .= $time_start ? ' – ' : '';
-				$post_content .= esc_html( $time_end );
+				$post_content .= '<time>' . esc_html( $time_end ) . '</time>';
 			}
 
 			$post_content .= '</p>';
