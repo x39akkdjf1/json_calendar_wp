@@ -804,6 +804,10 @@ final class JSON_Calendar_WP {
 			return false;
 		}
 
+		if ( ! current_user_can( 'edit_theme_options' ) || ! current_user_can( 'edit_post', $queried_object->ID ) ) {
+			return false;
+		}
+
 		$context = isset( $_REQUEST['context'] ) ? sanitize_key( wp_unslash( $_REQUEST['context'] ) ) : '';
 		$request_path = '';
 
