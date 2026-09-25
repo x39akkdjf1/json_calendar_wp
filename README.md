@@ -183,6 +183,8 @@ The plugin writes these post-meta keys on every sync:
 - `_json_calendar_time_start`
 - `_json_calendar_time_end`
 - `_json_calendar_description`
+- `_json_calendar_source_url`
+- `_json_calendar_image_id`
 
 The description is also mirrored into `post_content`, and the image is sideloaded as the featured image when possible. This lets Elementor Theme Builder single templates, Dynamic Tags → Custom Field, and ACF read the event data directly from normal WordPress posts.
 

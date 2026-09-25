@@ -38,9 +38,9 @@ final class JSON_Calendar_WP {
 	public function __construct() {
 		add_action( 'admin_menu', array( $this, 'add_settings_page' ) );
 		add_action( 'admin_init', array( $this, 'register_settings' ) );
+		add_filter( 'cron_schedules', array( $this, 'add_cron_schedule' ) );
 		add_action( 'init', array( $this, 'register_post_type' ) );
 		add_action( 'init', array( $this, 'ensure_cron_schedule' ) );
-		add_filter( 'cron_schedules', array( $this, 'add_cron_schedule' ) );
 		add_action( self::CRON_HOOK, array( $this, 'run_scheduled_sync' ) );
 		add_action( 'admin_post_json_calendar_wp_sync_now', array( $this, 'handle_manual_sync' ) );
 		add_shortcode( self::SHORTCODE, array( $this, 'render_shortcode' ) );
@@ -404,11 +404,10 @@ final class JSON_Calendar_WP {
 		$url = esc_url_raw( $url );
 		if ( ! $url || ! wp_http_validate_url( $url ) ) return new WP_Error( 'invalid_endpoint', __( 'Configure a valid JSON endpoint under Settings → JSON Calendar.', 'json-calendar-wp' ) );
 		$key = 'json_calendar_' . self::CACHE_VERSION . '_' . md5( $url );
-		if ( $force ) {
-			delete_transient( $key );
+		if ( ! $force ) {
+			$data = get_transient( $key );
+			if ( false !== $data ) return $data;
 		}
-		$data = get_transient( $key );
-		if ( false !== $data ) return $data;
 		$response = wp_safe_remote_get( $url, array( 'timeout' => 10, 'headers' => array( 'Accept' => 'application/json' ), 'user-agent' => 'JSON Calendar WordPress Plugin/2.0.0' ) );
 		if ( is_wp_error( $response ) || 200 !== wp_remote_retrieve_response_code( $response ) ) return new WP_Error( 'endpoint_unavailable', __( 'Calendar entries are temporarily unavailable.', 'json-calendar-wp' ) );
 		$data = json_decode( wp_remote_retrieve_body( $response ), true );
