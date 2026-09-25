@@ -273,8 +273,6 @@ final class JSON_Calendar_WP {
 	}
 
 	public function render_event_meta_shortcode( $atts ) {
-		static $image_style_rendered = false;
-
 		$atts = shortcode_atts(
 			array(
 				'field' => '',
@@ -342,13 +340,13 @@ final class JSON_Calendar_WP {
 						$alt_text = __( 'Event image', 'json-calendar-wp' );
 					}
 
+					$this->enqueue_shortcode_styles();
+
 					$output = sprintf(
-						'%1$s<img class="json-calendar-meta-image" src="%2$s" alt="%3$s" loading="lazy" decoding="async" />',
-						$image_style_rendered ? '' : '<style>.json-calendar-meta-image{display:block;max-width:100%;height:auto;}</style>',
+						'<img class="json-calendar-meta-image" src="%1$s" alt="%2$s" loading="lazy" decoding="async" />',
 						esc_url( $image_url ),
 						esc_attr( $alt_text )
 					);
-					$image_style_rendered = true;
 				}
 				break;
 
@@ -798,6 +796,23 @@ final class JSON_Calendar_WP {
 		return implode( ' ', $classes );
 	}
 
+	private function enqueue_shortcode_styles() {
+		static $inline_style_added = false;
+
+		$handle = 'json-calendar-wp-shortcode';
+
+		if ( ! wp_style_is( $handle, 'registered' ) ) {
+			wp_register_style( $handle, false, array(), '2.0.0' );
+		}
+
+		wp_enqueue_style( $handle );
+
+		if ( ! $inline_style_added ) {
+			wp_add_inline_style( $handle, '.json-calendar-meta-image{display:block;max-width:100%;height:auto;}' );
+			$inline_style_added = true;
+		}
+	}
+
 	private function is_site_editor_shortcode_preview( $queried_object ) {
 		if ( ! ( defined( 'REST_REQUEST' ) && REST_REQUEST ) ) {
 			return false;
@@ -819,7 +834,20 @@ final class JSON_Calendar_WP {
 			$request_path = (string) wp_parse_url( wp_unslash( $_SERVER['REQUEST_URI'] ), PHP_URL_PATH );
 		}
 
-		$preview_post_id = isset( $_REQUEST['post_id'] ) ? absint( wp_unslash( $_REQUEST['post_id'] ) ) : 0;
+		$preview_post_id = 0;
+
+		if ( isset( $_REQUEST['context'] ) && is_array( $_REQUEST['context'] ) ) {
+			if ( isset( $_REQUEST['context']['postId'] ) ) {
+				$preview_post_id = absint( wp_unslash( $_REQUEST['context']['postId'] ) );
+			} elseif ( isset( $_REQUEST['context']['post_id'] ) ) {
+				$preview_post_id = absint( wp_unslash( $_REQUEST['context']['post_id'] ) );
+			}
+		}
+
+		if ( ! $preview_post_id && isset( $_REQUEST['post_id'] ) ) {
+			$preview_post_id = absint( wp_unslash( $_REQUEST['post_id'] ) );
+		}
+
 		$is_shortcode_renderer = in_array(
 			untrailingslashit( $request_path ),
 			array(
@@ -831,7 +859,8 @@ final class JSON_Calendar_WP {
 		);
 
 		return $is_shortcode_renderer
-			&& ( ! $preview_post_id || $preview_post_id === (int) $queried_object->ID );
+			&& $preview_post_id
+			&& $preview_post_id === (int) $queried_object->ID;
 	}
 }
 
