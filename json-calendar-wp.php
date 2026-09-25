@@ -273,6 +273,8 @@ final class JSON_Calendar_WP {
 	}
 
 	public function render_event_meta_shortcode( $atts ) {
+		static $image_style_rendered = false;
+
 		$atts = shortcode_atts(
 			array(
 				'field' => '',
@@ -341,11 +343,12 @@ final class JSON_Calendar_WP {
 					}
 
 					$output = sprintf(
-						'<img class="json-calendar-meta-image" src="%1$s" alt="%2$s" loading="lazy" decoding="async" style="%3$s" />',
+						'%1$s<img class="json-calendar-meta-image" src="%2$s" alt="%3$s" loading="lazy" decoding="async" />',
+						$image_style_rendered ? '' : '<style>.json-calendar-meta-image{display:block;max-width:100%;height:auto;}</style>',
 						esc_url( $image_url ),
-						esc_attr( $alt_text ),
-						esc_attr( 'max-width:100%;height:auto;' )
+						esc_attr( $alt_text )
 					);
+					$image_style_rendered = true;
 				}
 				break;
 
@@ -811,14 +814,23 @@ final class JSON_Calendar_WP {
 		$request_path = '';
 
 		if ( isset( $_REQUEST['rest_route'] ) ) {
-			$request_path = (string) wp_unslash( $_REQUEST['rest_route'] );
+			$request_path = '/' . ltrim( (string) wp_unslash( $_REQUEST['rest_route'] ), '/' );
 		} elseif ( isset( $_SERVER['REQUEST_URI'] ) ) {
-			$request_path = (string) wp_unslash( $_SERVER['REQUEST_URI'] );
+			$request_path = (string) wp_parse_url( wp_unslash( $_SERVER['REQUEST_URI'] ), PHP_URL_PATH );
 		}
 
 		$preview_post_id = isset( $_REQUEST['post_id'] ) ? absint( wp_unslash( $_REQUEST['post_id'] ) ) : 0;
+		$is_shortcode_renderer = in_array(
+			untrailingslashit( $request_path ),
+			array(
+				'/wp/v2/block-renderer/core/shortcode',
+				'/wp-json/wp/v2/block-renderer/core/shortcode',
+				'/index.php/wp-json/wp/v2/block-renderer/core/shortcode',
+			),
+			true
+		);
 
-		return false !== strpos( $request_path, 'block-renderer/core/shortcode' )
+		return $is_shortcode_renderer
 			&& ( ! $preview_post_id || $preview_post_id === (int) $queried_object->ID );
 	}
 }
