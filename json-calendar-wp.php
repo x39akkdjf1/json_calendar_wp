@@ -286,10 +286,6 @@ final class JSON_Calendar_WP {
 	 * This remains public because WordPress action callbacks must be callable outside the class.
 	 */
 	public function enqueue_frontend_styles() {
-		if ( ! is_singular( self::POST_TYPE ) ) {
-			return;
-		}
-
 		wp_enqueue_style( 'json-calendar-wp-event-content', plugin_dir_url( __FILE__ ) . 'json-calendar-wp.css', array(), self::CACHE_VERSION );
 	}
 
