@@ -16,6 +16,7 @@ final class JSON_Calendar_WP {
 	const OPTION_NEXT_HEADING = 'json_calendar_wp_next_heading';
 	const OPTION_LAST_SYNC = 'json_calendar_wp_last_sync';
 	const OPTION_LAST_SYNC_COUNT = 'json_calendar_wp_last_sync_count';
+	const OPTION_LAST_SYNC_TRASHED = 'json_calendar_wp_last_sync_trashed';
 	const OPTION_LAST_SYNC_ERROR = 'json_calendar_wp_last_sync_error';
 	const OPTION_SCHEDULE_LOCK = 'json_calendar_wp_schedule_lock';
 	const SHORTCODE = 'json_calendar';
@@ -158,9 +159,11 @@ final class JSON_Calendar_WP {
 			$args['json_calendar_sync'] = 'error';
 			$args['message'] = implode( ' ', array_unique( $result['errors'] ) );
 			$args['count'] = isset( $result['count'] ) ? absint( $result['count'] ) : 0;
+			$args['trashed'] = isset( $result['trashed'] ) ? absint( $result['trashed'] ) : 0;
 		} else {
 			$args['json_calendar_sync'] = 'success';
 			$args['count'] = isset( $result['count'] ) ? absint( $result['count'] ) : 0;
+			$args['trashed'] = isset( $result['trashed'] ) ? absint( $result['trashed'] ) : 0;
 		}
 
 		wp_safe_redirect( add_query_arg( $args, admin_url( 'options-general.php' ) ) );
@@ -169,7 +172,8 @@ final class JSON_Calendar_WP {
 
 	public function render_settings_page() {
 		$last_sync = absint( get_option( self::OPTION_LAST_SYNC, 0 ) );
-		$last_count = absint( get_option( self::OPTION_LAST_SYNC_COUNT, 0 ) );
+		$last_count = get_option( self::OPTION_LAST_SYNC_COUNT, null );
+		$last_trashed = get_option( self::OPTION_LAST_SYNC_TRASHED, null );
 		$last_error = (string) get_option( self::OPTION_LAST_SYNC_ERROR, '' );
 		?>
 		<div class="wrap"><h1><?php echo esc_html__( 'JSON Calendar', 'json-calendar-wp' ); ?></h1>
@@ -181,7 +185,7 @@ final class JSON_Calendar_WP {
 		<tr><th scope="row"><label for="json_calendar_wp_next_heading"><?php echo esc_html__( 'Next-event headline', 'json-calendar-wp' ); ?></label></th><td><input type="text" class="regular-text" id="json_calendar_wp_next_heading" name="<?php echo esc_attr( self::OPTION_NEXT_HEADING ); ?>" value="<?php echo esc_attr( get_option( self::OPTION_NEXT_HEADING, __( 'Next up', 'json-calendar-wp' ) ) ); ?>" /></td></tr>
 		</table><?php submit_button(); ?></form>
 		<h2><?php echo esc_html__( 'Synchronization', 'json-calendar-wp' ); ?></h2>
-		<p><?php echo esc_html( $last_sync ? sprintf( __( 'Last sync: %1$s · %2$d event(s) processed.', 'json-calendar-wp' ), wp_date( get_option( 'date_format' ) . ' ' . get_option( 'time_format' ), $last_sync ), $last_count ) : __( 'Last sync: not yet run.', 'json-calendar-wp' ) ); ?></p>
+		<p><?php echo esc_html( $last_sync ? sprintf( __( 'Last sync: %1$s · %2$d synced, %3$d removed.', 'json-calendar-wp' ), wp_date( get_option( 'date_format' ) . ' ' . get_option( 'time_format' ), $last_sync ), absint( $last_count ), absint( $last_trashed ) ) : __( 'Last sync: not yet run.', 'json-calendar-wp' ) ); ?></p>
 		<?php if ( $last_error ) : ?>
 			<p><strong><?php echo esc_html__( 'Last sync error:', 'json-calendar-wp' ); ?></strong> <?php echo esc_html( $last_error ); ?></p>
 		<?php endif; ?>
@@ -204,7 +208,8 @@ final class JSON_Calendar_WP {
 
 		if ( 'success' === $state ) {
 			$count = isset( $_GET['count'] ) ? absint( wp_unslash( $_GET['count'] ) ) : 0;
-			$message = sprintf( __( 'Calendar sync completed. %d event(s) processed.', 'json-calendar-wp' ), $count );
+			$trashed = isset( $_GET['trashed'] ) ? absint( wp_unslash( $_GET['trashed'] ) ) : 0;
+			$message = sprintf( __( 'Calendar sync completed. %1$d synced, %2$d removed.', 'json-calendar-wp' ), $count, $trashed );
 			$class = 'notice notice-success';
 		} elseif ( 'error' === $state ) {
 			$message = isset( $_GET['message'] ) ? sanitize_text_field( wp_unslash( $_GET['message'] ) ) : __( 'Calendar sync failed.', 'json-calendar-wp' );
@@ -303,11 +308,12 @@ final class JSON_Calendar_WP {
 
 		$count = count( $processed_post_ids );
 		$trashed = $this->trash_missing_events( $url, array_keys( $seen ) );
-		$result = array( 'count' => $count + $trashed, 'synced' => $count, 'trashed' => $trashed, 'errors' => array_values( array_unique( $errors ) ) );
+		$result = array( 'count' => $count, 'synced' => $count, 'trashed' => $trashed, 'errors' => array_values( array_unique( $errors ) ) );
 
 		if ( $update_status ) {
 			update_option( self::OPTION_LAST_SYNC, current_time( 'timestamp' ), false );
 			update_option( self::OPTION_LAST_SYNC_COUNT, $result['count'], false );
+			update_option( self::OPTION_LAST_SYNC_TRASHED, $result['trashed'], false );
 			if ( $result['errors'] ) {
 				update_option( self::OPTION_LAST_SYNC_ERROR, implode( ' ', $result['errors'] ), false );
 			} else {
