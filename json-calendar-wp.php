@@ -47,8 +47,8 @@ final class JSON_Calendar_WP {
 		add_action( 'init', array( $this, 'ensure_cron_schedule' ) );
 		add_action( self::CRON_HOOK, array( $this, 'run_scheduled_sync' ) );
 		add_action( 'admin_post_json_calendar_wp_sync_now', array( $this, 'handle_manual_sync' ) );
-		add_action( 'wp_enqueue_scripts', array( $this, 'enqueue_shortcode_styles' ) );
-		add_action( 'enqueue_block_assets', array( $this, 'enqueue_shortcode_styles' ) );
+		add_action( 'wp_enqueue_scripts', array( $this, 'register_shortcode_style' ) );
+		add_action( 'enqueue_block_assets', array( $this, 'register_shortcode_style' ) );
 		add_shortcode( self::SHORTCODE, array( $this, 'render_shortcode' ) );
 		add_shortcode( self::META_SHORTCODE, array( $this, 'render_event_meta_shortcode' ) );
 	}
@@ -341,6 +341,8 @@ final class JSON_Calendar_WP {
 					if ( '' === $alt_text ) {
 						$alt_text = __( 'Event image', 'json-calendar-wp' );
 					}
+
+					$this->enqueue_shortcode_styles();
 
 					$output = sprintf(
 						'<img class="json-calendar-meta-image" src="%1$s" alt="%2$s" loading="lazy" decoding="async" />',
@@ -800,21 +802,26 @@ final class JSON_Calendar_WP {
 		return implode( ' ', $classes );
 	}
 
-	private function enqueue_shortcode_styles() {
+	private function register_shortcode_style() {
 		static $inline_style_added = false;
 
 		$handle = 'json-calendar-wp-shortcode';
 
-		if ( ! wp_style_is( $handle, 'registered' ) ) {
-			wp_register_style( $handle, false, array(), '2.0.0' );
+		if ( wp_style_is( $handle, 'registered' ) ) {
+			return;
 		}
 
-		wp_enqueue_style( $handle );
+		wp_register_style( $handle, false, array(), '2.0.0' );
 
 		if ( ! $inline_style_added ) {
 			wp_add_inline_style( $handle, '.json-calendar-meta-image{display:block;max-width:100%;height:auto;}' );
 			$inline_style_added = true;
 		}
+	}
+
+	private function enqueue_shortcode_styles() {
+		$this->register_shortcode_style();
+		wp_enqueue_style( 'json-calendar-wp-shortcode' );
 	}
 
 	private function is_site_editor_shortcode_preview( $queried_object ) {
