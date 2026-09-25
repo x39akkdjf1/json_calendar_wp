@@ -436,7 +436,7 @@ final class JSON_Calendar_WP {
 		);
 		$results = $wpdb->get_results(
 			$wpdb->prepare(
-				"SELECT posts.ID AS post_id, reference.meta_value AS reference
+				"SELECT DISTINCT posts.ID AS post_id, reference.meta_value AS reference
 				FROM {$wpdb->posts} AS posts
 				INNER JOIN {$wpdb->postmeta} AS source ON posts.ID = source.post_id AND source.meta_key = %s
 				INNER JOIN {$wpdb->postmeta} AS reference ON posts.ID = reference.post_id AND reference.meta_key = %s
@@ -470,7 +470,8 @@ final class JSON_Calendar_WP {
 			if ( false !== $data ) return $data;
 		}
 		$response = wp_safe_remote_get( $url, array( 'timeout' => 10, 'headers' => array( 'Accept' => 'application/json' ), 'user-agent' => 'JSON Calendar WordPress Plugin/2.0.0' ) );
-		if ( is_wp_error( $response ) || 200 !== wp_remote_retrieve_response_code( $response ) ) return new WP_Error( 'endpoint_unavailable', __( 'Calendar entries are temporarily unavailable.', 'json-calendar-wp' ) );
+		$response_code = (int) wp_remote_retrieve_response_code( $response );
+		if ( is_wp_error( $response ) || $response_code < 200 || $response_code >= 300 ) return new WP_Error( 'endpoint_unavailable', __( 'Calendar entries are temporarily unavailable.', 'json-calendar-wp' ) );
 		$data = json_decode( wp_remote_retrieve_body( $response ), true );
 		if ( JSON_ERROR_NONE !== json_last_error() ) return new WP_Error( 'invalid_json', __( 'The calendar endpoint returned invalid JSON.', 'json-calendar-wp' ) );
 		if ( ! is_array( $data ) ) return new WP_Error( 'invalid_json', __( 'The calendar endpoint returned invalid JSON.', 'json-calendar-wp' ) );
@@ -511,7 +512,7 @@ final class JSON_Calendar_WP {
 	private function get_event_url( $entry, $source_url = '' ) {
 		$reference = $this->get_event_reference( $entry );
 		$post_id = $this->find_event_post_id( $reference, array( 'publish' ), $source_url );
-		if ( ! $post_id ) {
+		if ( ! $post_id && ! $source_url ) {
 			$post_id = $this->find_event_post_id( $reference, array( 'publish' ) );
 		}
 		return $post_id ? get_permalink( $post_id ) : home_url( '/' . self::REWRITE_SLUG . '/' . rawurlencode( $reference ) . '/' );
