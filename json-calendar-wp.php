@@ -346,10 +346,14 @@ final class JSON_Calendar_WP {
 		$post_content = '';
 
 		if ( $date ) {
-			$post_content .= '<p class="json-calendar-event-date"><strong>' . esc_html__( 'Date:', 'json-calendar-wp' ) . '</strong> ' . esc_html( $this->format_date_only( $date ) );
+			$formatted_date = $this->format_date_only( $date );
+			$post_content .= '<p class="json-calendar-event-date"><strong>' . esc_html__( 'Date:', 'json-calendar-wp' ) . '</strong> ' . esc_html( $formatted_date );
 
 			if ( $end && $end !== $date ) {
-				$post_content .= ' – ' . esc_html( $this->format_date_only( $end ) );
+				$formatted_end = $this->format_date_only( $end );
+				if ( $formatted_end !== $formatted_date ) {
+					$post_content .= ' – ' . esc_html( $formatted_end );
+				}
 			}
 
 			$post_content .= '</p>';
