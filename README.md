@@ -90,7 +90,7 @@ Use **Settings → JSON Calendar → Sync now** to immediately fetch the endpoin
 [json_calendar]
 ```
 
-The standard view displays upcoming events as image-only cards in a responsive three-column grid. Each image links to the synced event post permalink and shows a `Mehr` hover/focus overlay. If an event has no image, the plugin falls back to the existing text-based event output.
+The standard view displays upcoming events as image-only cards in a responsive three-column grid. Each image links to the synced event post permalink and shows a `Mehr` hover/focus overlay. If an event has no image or no mapped synced-post permalink, the plugin falls back to the existing text-based event output.
 
 Optional limit:
 
@@ -128,7 +128,7 @@ Equivalent mode syntax:
 [json_calendar archive="true"]
 ```
 
-The archive displays events that have already happened as image-only cards in the same responsive grid. Each image links to the synced event post permalink, and events without an image fall back to the existing text-based event output. Archive events are ordered with the most recently finished event first.
+The archive displays events that have already happened as image-only cards in the same responsive grid. Each image links to the synced event post permalink, and events without an image or a mapped synced-post permalink fall back to the existing text-based event output. Archive events are ordered with the most recently finished event first.
 
 Optional limit:
 
