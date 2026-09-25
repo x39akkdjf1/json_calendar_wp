@@ -880,8 +880,7 @@ final class JSON_Calendar_WP {
 			$preview_post_type = sanitize_key( $post_type_input );
 		}
 
-		$rest_prefix = preg_quote( rest_get_url_prefix(), '#' );
-		$is_shortcode_renderer = 1 === preg_match( '#^/(?:' . $rest_prefix . '/|index\.php/' . $rest_prefix . '/)?(?:wp/v2/block-renderer/core/shortcode|wp-block-editor/v1/block-renderer/core/shortcode|wp/v2/block-editor/block-renderer/core/shortcode)(?:/[^/?]+)?$#', $request_path );
+		$is_shortcode_renderer = 1 === preg_match( '#^/(?:wp/v2/block-renderer/core/shortcode|wp-block-editor/v1/block-renderer/core/shortcode|wp/v2/block-editor/block-renderer/core/shortcode)(?:/[^/?]+)?$#', $request_path );
 
 		if ( ! $is_shortcode_renderer ) {
 			return false;
