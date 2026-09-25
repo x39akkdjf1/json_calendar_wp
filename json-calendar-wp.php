@@ -1,8 +1,8 @@
 <?php
 /**
  * Plugin Name: JSON Calendar
- * Description: Fetches calendar entries from a JSON endpoint and displays them with the [json_calendar] shortcode.
- * Version: 1.9.0
+ * Description: Fetches calendar entries from a JSON endpoint, syncs them into real WordPress posts, and displays them with the [json_calendar] shortcode.
+ * Version: 2.0.0
  * Author: x39akkdjf1
  * License: GPL-2.0-or-later
  * Requires at least: 5.8
@@ -14,29 +14,47 @@ if ( ! defined( 'ABSPATH' ) ) { exit; }
 final class JSON_Calendar_WP {
 	const OPTION_ENDPOINT = 'json_calendar_wp_endpoint';
 	const OPTION_NEXT_HEADING = 'json_calendar_wp_next_heading';
+	const OPTION_LAST_SYNC = 'json_calendar_wp_last_sync';
+	const OPTION_LAST_SYNC_COUNT = 'json_calendar_wp_last_sync_count';
+	const OPTION_LAST_SYNC_ERROR = 'json_calendar_wp_last_sync_error';
 	const SHORTCODE = 'json_calendar';
-	const CACHE_VERSION = '12';
-	const QUERY_VAR = 'json_calendar_event';
+	const CACHE_VERSION = '13';
+	const POST_TYPE = 'json_calendar_event';
+	const CRON_HOOK = 'json_calendar_wp_sync_events';
+	const CRON_SCHEDULE = 'json_calendar_15_minutes';
+
+	// These keys stay underscore-prefixed so sync bookkeeping stays out of the classic Custom Fields UI.
+	// Elementor Dynamic Tags and ACF can still read them directly as normal post meta values.
+	const META_REFERENCE = '_json_calendar_reference';
+	const META_IMAGE_URL = '_json_calendar_image_url';
+	const META_DATE = '_json_calendar_date';
+	const META_DATE_END = '_json_calendar_date_end';
+	const META_TIME_START = '_json_calendar_time_start';
+	const META_TIME_END = '_json_calendar_time_end';
+	const META_DESCRIPTION = '_json_calendar_description';
+	const META_SOURCE_URL = '_json_calendar_source_url';
+	const META_IMAGE_ID = '_json_calendar_image_id';
 
 	public function __construct() {
 		add_action( 'admin_menu', array( $this, 'add_settings_page' ) );
 		add_action( 'admin_init', array( $this, 'register_settings' ) );
-		add_action( 'init', array( $this, 'register_event_route' ) );
-		add_filter( 'query_vars', array( $this, 'add_event_query_var' ) );
-		add_action( 'template_redirect', array( $this, 'prepare_event_template' ), 1 );
-		add_filter( 'template_include', array( $this, 'load_event_template' ), 999 );
-		add_filter( 'redirect_canonical', array( $this, 'disable_event_canonical_redirect' ), 10, 2 );
-		add_filter( 'body_class', array( $this, 'add_event_body_class' ) );
+		add_action( 'init', array( $this, 'register_post_type' ) );
+		add_action( 'init', array( $this, 'ensure_cron_schedule' ) );
+		add_filter( 'cron_schedules', array( $this, 'add_cron_schedule' ) );
+		add_action( self::CRON_HOOK, array( $this, 'run_scheduled_sync' ) );
+		add_action( 'admin_post_json_calendar_wp_sync_now', array( $this, 'handle_manual_sync' ) );
 		add_shortcode( self::SHORTCODE, array( $this, 'render_shortcode' ) );
 	}
 
 	public static function activate() {
 		$plugin = new self();
-		$plugin->register_event_route();
+		$plugin->register_post_type();
+		$plugin->ensure_cron_schedule();
 		flush_rewrite_rules();
 	}
 
 	public static function deactivate() {
+		wp_clear_scheduled_hook( self::CRON_HOOK );
 		flush_rewrite_rules();
 	}
 
@@ -49,82 +67,120 @@ final class JSON_Calendar_WP {
 		register_setting( 'json_calendar_wp_settings', self::OPTION_NEXT_HEADING, array( 'type' => 'string', 'sanitize_callback' => 'sanitize_text_field', 'default' => __( 'Next up', 'json-calendar-wp' ) ) );
 	}
 
-	public function register_event_route() {
-		add_rewrite_tag( '%' . self::QUERY_VAR . '%', '([^&]+)' );
-		add_rewrite_rule( '^json-calendar-event/([^/]+)/?$', 'index.php?' . self::QUERY_VAR . '=$matches[1]', 'top' );
+	public function register_post_type() {
+		register_post_type(
+			self::POST_TYPE,
+			array(
+				'labels' => array(
+					'name' => esc_html__( 'Calendar Events', 'json-calendar-wp' ),
+					'singular_name' => esc_html__( 'Calendar Event', 'json-calendar-wp' ),
+				),
+				'public' => true,
+				'show_in_rest' => true,
+				'has_archive' => false,
+				'rewrite' => array(
+					'slug' => 'json-calendar-event',
+					'with_front' => false,
+				),
+				'supports' => array( 'title', 'editor', 'thumbnail' ),
+			)
+		);
 	}
 
-	public function add_event_query_var( $vars ) {
-		$vars[] = self::QUERY_VAR;
-		return $vars;
-	}
-
-	public function disable_event_canonical_redirect( $redirect, $requested_url ) {
-		return get_query_var( self::QUERY_VAR ) ? false : $redirect;
-	}
-
-	public function add_event_body_class( $classes ) {
-		if ( get_query_var( self::QUERY_VAR ) ) {
-			$classes[] = 'json-calendar-event-page';
-		}
-		return $classes;
-	}
-
-	public function load_event_template( $template ) {
-		if ( ! get_query_var( self::QUERY_VAR ) ) {
-			return $template;
-		}
-
-		$theme_template = locate_template( array( 'single-post.php', 'single.php', 'index.php' ), false, false );
-		return $theme_template ? $theme_template : $template;
-	}
-
-	public function prepare_event_template() {
-		$slug = get_query_var( self::QUERY_VAR );
-		if ( ! $slug ) {
-			return;
+	public function add_cron_schedule( $schedules ) {
+		if ( ! isset( $schedules[ self::CRON_SCHEDULE ] ) ) {
+			$schedules[ self::CRON_SCHEDULE ] = array(
+				'interval' => 15 * MINUTE_IN_SECONDS,
+				'display' => esc_html__( 'Every 15 Minutes', 'json-calendar-wp' ),
+			);
 		}
 
-		$entry = $this->find_event_by_slug( sanitize_title( $slug ) );
-		if ( ! is_array( $entry ) ) {
-			global $wp_query;
-			$wp_query->set_404();
-			status_header( 404 );
-			return;
+		return $schedules;
+	}
+
+	public function ensure_cron_schedule() {
+		if ( ! wp_next_scheduled( self::CRON_HOOK ) ) {
+			wp_schedule_event( time() + MINUTE_IN_SECONDS, self::CRON_SCHEDULE, self::CRON_HOOK );
+		}
+	}
+
+	public function run_scheduled_sync() {
+		$endpoint = get_option( self::OPTION_ENDPOINT, '' );
+		if ( $endpoint ) {
+			$this->sync_endpoint( $endpoint, true, true );
+		}
+	}
+
+	public function handle_manual_sync() {
+		if ( ! current_user_can( 'manage_options' ) ) {
+			wp_die( esc_html__( 'You are not allowed to sync calendar events.', 'json-calendar-wp' ) );
 		}
 
-		$event_post = $this->event_as_post( $entry );
+		check_admin_referer( 'json_calendar_wp_sync_now' );
 
-		global $wp_query, $post;
-		$post = $event_post;
-		$wp_query->posts = array( $event_post );
-		$wp_query->post = $event_post;
-		$wp_query->post_count = 1;
-		$wp_query->current_post = -1;
-		$wp_query->found_posts = 1;
-		$wp_query->max_num_pages = 1;
-		$wp_query->queried_object = $event_post;
-		$wp_query->queried_object_id = $event_post->ID;
-		$wp_query->is_404 = false;
-		$wp_query->is_single = true;
-		$wp_query->is_singular = true;
-		$wp_query->is_page = false;
-		$wp_query->is_home = false;
-		$wp_query->is_archive = false;
-		$wp_query->is_post_type_archive = false;
-		setup_postdata( $event_post );
+		$endpoint = get_option( self::OPTION_ENDPOINT, '' );
+		$result = $this->sync_endpoint( $endpoint, true, true );
+		$args = array( 'page' => 'json-calendar-wp' );
+
+		if ( is_wp_error( $result ) ) {
+			$args['json_calendar_sync'] = 'error';
+			$args['message'] = $result->get_error_message();
+		} else {
+			$args['json_calendar_sync'] = 'success';
+			$args['count'] = isset( $result['count'] ) ? absint( $result['count'] ) : 0;
+		}
+
+		wp_safe_redirect( add_query_arg( $args, admin_url( 'options-general.php' ) ) );
+		exit;
 	}
 
 	public function render_settings_page() {
+		$last_sync = absint( get_option( self::OPTION_LAST_SYNC, 0 ) );
+		$last_count = absint( get_option( self::OPTION_LAST_SYNC_COUNT, 0 ) );
+		$last_error = (string) get_option( self::OPTION_LAST_SYNC_ERROR, '' );
 		?>
 		<div class="wrap"><h1><?php echo esc_html__( 'JSON Calendar', 'json-calendar-wp' ); ?></h1>
 		<p><?php echo esc_html__( 'Configure the JSON endpoint and the headline used by the next-event view.', 'json-calendar-wp' ); ?></p>
+		<?php $this->render_sync_notice(); ?>
 		<form method="post" action="options.php"><?php settings_fields( 'json_calendar_wp_settings' ); ?>
 		<table class="form-table" role="presentation">
 		<tr><th scope="row"><label for="json_calendar_wp_endpoint"><?php echo esc_html__( 'JSON endpoint URL', 'json-calendar-wp' ); ?></label></th><td><input type="url" class="regular-text" id="json_calendar_wp_endpoint" name="<?php echo esc_attr( self::OPTION_ENDPOINT ); ?>" value="<?php echo esc_attr( get_option( self::OPTION_ENDPOINT, '' ) ); ?>" required /></td></tr>
 		<tr><th scope="row"><label for="json_calendar_wp_next_heading"><?php echo esc_html__( 'Next-event headline', 'json-calendar-wp' ); ?></label></th><td><input type="text" class="regular-text" id="json_calendar_wp_next_heading" name="<?php echo esc_attr( self::OPTION_NEXT_HEADING ); ?>" value="<?php echo esc_attr( get_option( self::OPTION_NEXT_HEADING, __( 'Next up', 'json-calendar-wp' ) ) ); ?>" /></td></tr>
-		</table><?php submit_button(); ?></form></div>
+		</table><?php submit_button(); ?></form>
+		<h2><?php echo esc_html__( 'Synchronization', 'json-calendar-wp' ); ?></h2>
+		<p><?php echo esc_html( $last_sync ? sprintf( __( 'Last sync: %1$s · %2$d event(s) processed.', 'json-calendar-wp' ), wp_date( get_option( 'date_format' ) . ' ' . get_option( 'time_format' ), $last_sync ), $last_count ) : __( 'Last sync: not yet run.', 'json-calendar-wp' ) ); ?></p>
+		<?php if ( $last_error ) : ?>
+			<p><strong><?php echo esc_html__( 'Last sync error:', 'json-calendar-wp' ); ?></strong> <?php echo esc_html( $last_error ); ?></p>
+		<?php endif; ?>
+		<form method="post" action="<?php echo esc_url( admin_url( 'admin-post.php' ) ); ?>">
+			<input type="hidden" name="action" value="json_calendar_wp_sync_now" />
+			<?php wp_nonce_field( 'json_calendar_wp_sync_now' ); ?>
+			<?php submit_button( __( 'Sync now', 'json-calendar-wp' ), 'secondary', 'submit', false ); ?>
+		</form></div>
 		<?php
+	}
+
+	private function render_sync_notice() {
+		if ( empty( $_GET['json_calendar_sync'] ) ) {
+			return;
+		}
+
+		$state = sanitize_key( wp_unslash( $_GET['json_calendar_sync'] ) );
+		$message = '';
+		$class = 'notice notice-info';
+
+		if ( 'success' === $state ) {
+			$count = isset( $_GET['count'] ) ? absint( wp_unslash( $_GET['count'] ) ) : 0;
+			$message = sprintf( __( 'Calendar sync completed. %d event(s) processed.', 'json-calendar-wp' ), $count );
+			$class = 'notice notice-success';
+		} elseif ( 'error' === $state ) {
+			$message = isset( $_GET['message'] ) ? sanitize_text_field( wp_unslash( $_GET['message'] ) ) : __( 'Calendar sync failed.', 'json-calendar-wp' );
+			$class = 'notice notice-error';
+		}
+
+		if ( $message ) {
+			printf( '<div class="%1$s"><p>%2$s</p></div>', esc_attr( $class ), esc_html( $message ) );
+		}
 	}
 
 	public function render_shortcode( $atts ) {
@@ -136,6 +192,7 @@ final class JSON_Calendar_WP {
 		$is_next = in_array( strtolower( (string) $atts['next'] ), array( 'true', '1', 'yes' ), true ) || 'next' === $mode;
 		$is_archive = in_array( strtolower( (string) $atts['archive'] ), array( 'true', '1', 'yes' ), true ) || 'archive' === $mode;
 		$entries = $this->get_entries( $data );
+		$this->maybe_sync_entries_from_shortcode( $atts['url'], $entries );
 		$entries = $is_archive ? $this->filter_past( $entries ) : $this->filter_upcoming( $entries );
 		if ( $is_next ) $entries = array_slice( $entries, 0, 1 );
 		if ( ! $entries ) return '<p class="json-calendar-empty">' . esc_html( $is_archive ? __( 'No past calendar entries found.', 'json-calendar-wp' ) : __( 'No upcoming calendar entries found.', 'json-calendar-wp' ) ) . '</p>';
@@ -151,7 +208,7 @@ final class JSON_Calendar_WP {
 			$output .= '<li class="json-calendar-entry"><div class="json-calendar-card">';
 			if ( $is_next ) {
 				if ( $image ) $output .= '<img class="json-calendar-image" src="' . esc_url( $image ) . '" alt="' . esc_attr( $title ) . '" loading="lazy" />';
-				$output .= '<div class="json-calendar-details"><div class="wp-block-cover__inner-container"><span class="json-calendar-next-heading">' . esc_html( get_option( self::OPTION_NEXT_HEADING, __( 'Next up', 'json-calendar-wp' ) ) ) . '</span><h1 class="json-calendar-title">' . esc_html( $title ) . '</h1><a class="json-calendar-more" href="' . esc_url( $this->get_event_url( $entry ) ) . '">' . esc_html__( 'Mehr', 'json-calendar-wp' ) . '</a></div></div>';
+				$output .= '<div class="json-calendar-details"><div class="wp-block-cover__inner-container"><span class="json-calendar-next-heading">' . esc_html( get_option( self::OPTION_NEXT_HEADING, __( 'Next up', 'json-calendar-wp' ) ) ) . '</span><h1 class="json-calendar-title">' . esc_html( $title ) . '</h1><a class="json-calendar-more" href="' . esc_url( $this->get_event_url( $entry, $atts['url'] ) ) . '">' . esc_html__( 'Mehr', 'json-calendar-wp' ) . '</a></div></div>';
 			} else {
 				if ( $image ) $output .= '<img class="json-calendar-image" src="' . esc_url( $image ) . '" alt="' . esc_attr( $title ) . '" loading="lazy" />';
 				$output .= '<div class="json-calendar-details"><h2 class="json-calendar-title">' . esc_html( $title ) . '</h2>';
@@ -166,13 +223,185 @@ final class JSON_Calendar_WP {
 		return $output . '</ul></div>';
 	}
 
-	private function fetch_data( $url ) {
+	private function maybe_sync_entries_from_shortcode( $url, $entries ) {
+		$url = esc_url_raw( $url );
+		if ( ! $url || ! $entries ) {
+			return;
+		}
+
+		$key = 'json_calendar_sync_' . md5( $url );
+		if ( get_transient( $key ) ) {
+			return;
+		}
+
+		$result = $this->sync_entries( $url, $entries, $url === esc_url_raw( get_option( self::OPTION_ENDPOINT, '' ) ) );
+		if ( ! is_wp_error( $result ) ) {
+			set_transient( $key, 1, 15 * MINUTE_IN_SECONDS );
+		}
+	}
+
+	private function sync_endpoint( $url, $force = false, $update_status = true ) {
+		$data = $this->fetch_data( $url, $force );
+		if ( is_wp_error( $data ) ) {
+			if ( $update_status ) {
+				update_option( self::OPTION_LAST_SYNC_ERROR, $data->get_error_message(), false );
+			}
+			return $data;
+		}
+
+		return $this->sync_entries( $url, $this->get_entries( $data ), $update_status );
+	}
+
+	private function sync_entries( $url, $entries, $update_status = true ) {
+		$url = esc_url_raw( $url );
+		$entries = is_array( $entries ) ? $entries : array();
+		$seen = array();
+		$count = 0;
+
+		foreach ( $entries as $entry ) {
+			if ( ! is_array( $entry ) ) {
+				continue;
+			}
+
+			$reference = $this->get_event_reference( $entry );
+			if ( ! $reference ) {
+				continue;
+			}
+
+			$post_id = $this->upsert_event_post( $entry, $url, $reference );
+			if ( $post_id ) {
+				$seen[] = $reference;
+				++$count;
+			}
+		}
+
+		$trashed = $this->trash_missing_events( $url, $seen );
+		$result = array( 'count' => $count, 'trashed' => $trashed );
+
+		if ( $update_status ) {
+			update_option( self::OPTION_LAST_SYNC, current_time( 'timestamp' ), false );
+			update_option( self::OPTION_LAST_SYNC_COUNT, $count, false );
+			delete_option( self::OPTION_LAST_SYNC_ERROR );
+		}
+
+		return $result;
+	}
+
+	private function upsert_event_post( $entry, $url, $reference ) {
+		$title = sanitize_text_field( $this->value( $entry, array( 'title', 'name', 'summary' ), __( 'Untitled event', 'json-calendar-wp' ) ) );
+		$image = $this->first_image( $entry );
+		$date = $this->value( $entry, array( 'date', 'start_date', 'start', 'datetime' ) );
+		$end = $this->value( $entry, array( 'date_end', 'end_date', 'end' ) );
+		$time_start = $this->value( $entry, array( 'time_start' ) );
+		$time_end = $this->value( $entry, array( 'time_end' ) );
+		$description = $this->value( $entry, array( 'description', 'details', 'content' ) );
+		$post_content = $description ? wp_kses_post( $description ) : '';
+		$post_id = $this->find_event_post_id( $reference, array( 'publish', 'draft', 'pending', 'future', 'private', 'trash' ), $url );
+		$previous_image = $post_id ? (string) get_post_meta( $post_id, self::META_IMAGE_URL, true ) : '';
+		$postarr = array(
+			'post_title' => $title,
+			'post_content' => $post_content,
+			'post_status' => 'publish',
+			'post_type' => self::POST_TYPE,
+			'post_name' => $reference,
+		);
+
+		if ( $post_id ) {
+			$postarr['ID'] = $post_id;
+			$post_id = wp_update_post( wp_slash( $postarr ), true );
+		} else {
+			$post_id = wp_insert_post( wp_slash( $postarr ), true );
+		}
+
+		if ( is_wp_error( $post_id ) || ! $post_id ) {
+			return 0;
+		}
+
+		update_post_meta( $post_id, self::META_REFERENCE, $reference );
+		update_post_meta( $post_id, self::META_IMAGE_URL, $image );
+		update_post_meta( $post_id, self::META_DATE, $date );
+		update_post_meta( $post_id, self::META_DATE_END, $end );
+		update_post_meta( $post_id, self::META_TIME_START, $time_start );
+		update_post_meta( $post_id, self::META_TIME_END, $time_end );
+		update_post_meta( $post_id, self::META_DESCRIPTION, $description );
+		update_post_meta( $post_id, self::META_SOURCE_URL, $url );
+
+		if ( $image ) {
+			$this->sync_featured_image( $post_id, $image, $previous_image );
+		} else {
+			delete_post_thumbnail( $post_id );
+			delete_post_meta( $post_id, self::META_IMAGE_ID );
+		}
+
+		return (int) $post_id;
+	}
+
+	private function sync_featured_image( $post_id, $image_url, $previous_image ) {
+		$attachment_id = absint( get_post_meta( $post_id, self::META_IMAGE_ID, true ) );
+		if ( $attachment_id && $image_url === $previous_image && get_post( $attachment_id ) ) {
+			if ( get_post_thumbnail_id( $post_id ) !== $attachment_id ) {
+				set_post_thumbnail( $post_id, $attachment_id );
+			}
+			return;
+		}
+
+		require_once ABSPATH . 'wp-admin/includes/file.php';
+		require_once ABSPATH . 'wp-admin/includes/media.php';
+		require_once ABSPATH . 'wp-admin/includes/image.php';
+
+		$attachment_id = media_sideload_image( $image_url, $post_id, null, 'id' );
+		if ( is_wp_error( $attachment_id ) ) {
+			return;
+		}
+
+		update_post_meta( $post_id, self::META_IMAGE_ID, $attachment_id );
+		set_post_thumbnail( $post_id, $attachment_id );
+	}
+
+	private function trash_missing_events( $url, $seen ) {
+		$url = esc_url_raw( $url );
+		if ( ! $url ) {
+			return 0;
+		}
+
+		$posts = get_posts(
+			array(
+				'post_type' => self::POST_TYPE,
+				'post_status' => array( 'publish', 'draft', 'pending', 'future', 'private' ),
+				'numberposts' => -1,
+				'fields' => 'ids',
+				'suppress_filters' => true,
+				'meta_query' => array(
+					array(
+						'key' => self::META_SOURCE_URL,
+						'value' => $url,
+					),
+				),
+			)
+		);
+		$count = 0;
+
+		foreach ( $posts as $post_id ) {
+			$reference = (string) get_post_meta( $post_id, self::META_REFERENCE, true );
+			if ( ! in_array( $reference, $seen, true ) ) {
+				wp_trash_post( $post_id );
+				++$count;
+			}
+		}
+
+		return $count;
+	}
+
+	private function fetch_data( $url, $force = false ) {
 		$url = esc_url_raw( $url );
 		if ( ! $url || ! wp_http_validate_url( $url ) ) return new WP_Error( 'invalid_endpoint', __( 'Configure a valid JSON endpoint under Settings → JSON Calendar.', 'json-calendar-wp' ) );
 		$key = 'json_calendar_' . self::CACHE_VERSION . '_' . md5( $url );
+		if ( $force ) {
+			delete_transient( $key );
+		}
 		$data = get_transient( $key );
 		if ( false !== $data ) return $data;
-		$response = wp_safe_remote_get( $url, array( 'timeout' => 10, 'headers' => array( 'Accept' => 'application/json' ), 'user-agent' => 'JSON Calendar WordPress Plugin/1.9.0' ) );
+		$response = wp_safe_remote_get( $url, array( 'timeout' => 10, 'headers' => array( 'Accept' => 'application/json' ), 'user-agent' => 'JSON Calendar WordPress Plugin/2.0.0' ) );
 		if ( is_wp_error( $response ) || 200 !== wp_remote_retrieve_response_code( $response ) ) return new WP_Error( 'endpoint_unavailable', __( 'Calendar entries are temporarily unavailable.', 'json-calendar-wp' ) );
 		$data = json_decode( wp_remote_retrieve_body( $response ), true );
 		if ( JSON_ERROR_NONE !== json_last_error() ) return new WP_Error( 'invalid_json', __( 'The calendar endpoint returned invalid JSON.', 'json-calendar-wp' ) );
@@ -200,7 +429,7 @@ final class JSON_Calendar_WP {
 	private function value( $entry, $keys, $default = '' ) { foreach ( $keys as $key ) if ( isset( $entry[ $key ] ) && is_scalar( $entry[ $key ] ) && '' !== (string) $entry[ $key ] ) return (string) $entry[ $key ]; return $default; }
 	private function format_date_only( $date ) { $timestamp = strtotime( $date ); return $timestamp ? wp_date( get_option( 'date_format' ), $timestamp ) : $date; }
 
-	private function get_event_slug( $entry ) {
+	private function get_event_reference( $entry ) {
 		$reference = $this->value( $entry, array( 'reference', 'id', 'slug', 'uid' ) );
 		if ( $reference ) return sanitize_title( $reference );
 		$title = $this->value( $entry, array( 'title', 'name', 'summary' ), 'event' );
@@ -210,45 +439,39 @@ final class JSON_Calendar_WP {
 		return sanitize_title( $seed );
 	}
 
-	private function get_event_url( $entry ) {
-		return home_url( '/json-calendar-event/' . rawurlencode( $this->get_event_slug( $entry ) ) . '/' );
+	private function get_event_url( $entry, $source_url = '' ) {
+		$reference = $this->get_event_reference( $entry );
+		$post_id = $this->find_event_post_id( $reference, array( 'publish' ), $source_url );
+		return $post_id ? get_permalink( $post_id ) : home_url( '/json-calendar-event/' . rawurlencode( $reference ) . '/' );
 	}
 
-	private function find_event_by_slug( $slug ) {
-		$data = $this->fetch_data( get_option( self::OPTION_ENDPOINT, '' ) );
-		if ( is_wp_error( $data ) ) return null;
-		foreach ( $this->get_entries( $data ) as $entry ) {
-			if ( is_array( $entry ) && $slug === $this->get_event_slug( $entry ) ) return $entry;
+	private function find_event_post_id( $reference, $post_status = array( 'publish' ), $source_url = '' ) {
+		$meta_query = array(
+			array(
+				'key' => self::META_REFERENCE,
+				'value' => sanitize_title( $reference ),
+			),
+		);
+
+		if ( $source_url ) {
+			$meta_query[] = array(
+				'key' => self::META_SOURCE_URL,
+				'value' => esc_url_raw( $source_url ),
+			);
 		}
-		return null;
-	}
 
-	private function event_as_post( $entry ) {
-		$title = $this->value( $entry, array( 'title', 'name', 'summary' ), __( 'Untitled event', 'json-calendar-wp' ) );
-		$image = $this->first_image( $entry );
-		$date = $this->value( $entry, array( 'date', 'start_date', 'start', 'datetime' ) );
-		$end = $this->value( $entry, array( 'date_end', 'end_date', 'end' ) );
-		$time_start = $this->value( $entry, array( 'time_start' ) );
-		$time_end = $this->value( $entry, array( 'time_end' ) );
-		$description = $this->value( $entry, array( 'description', 'details', 'content' ) );
-		$meta = $date ? '<p class="json-calendar-meta">' . esc_html( $this->format_date_only( $date ) . ( $end && $end !== $date ? ' – ' . $this->format_date_only( $end ) : '' ) . ( $time_start || $time_end ? ' · ' . trim( $time_start . ( $time_end ? ' – ' . $time_end : '' ) ) : '' ) ) . '</p>' : '';
-		$content = ( $image ? '<p class="json-calendar-entry-image"><img src="' . esc_url( $image ) . '" alt="' . esc_attr( $title ) . '" /></p>' : '' ) . $meta . ( $description ? wp_kses_post( $description ) : '' );
+		$posts = get_posts(
+			array(
+				'post_type' => self::POST_TYPE,
+				'post_status' => $post_status,
+				'numberposts' => 1,
+				'fields' => 'ids',
+				'suppress_filters' => true,
+				'meta_query' => $meta_query,
+			)
+		);
 
-		$post = new stdClass();
-		$post->ID = 0;
-		$post->post_author = 0;
-		$post->post_date = current_time( 'mysql' );
-		$post->post_date_gmt = current_time( 'mysql', true );
-		$post->post_content = $content;
-		$post->post_title = $title;
-		$post->post_excerpt = wp_trim_words( wp_strip_all_tags( $description ), 55 );
-		$post->post_status = 'publish';
-		$post->comment_status = 'closed';
-		$post->ping_status = 'closed';
-		$post->post_name = $this->get_event_slug( $entry );
-		$post->post_type = 'post';
-		$post->filter = 'raw';
-		return new WP_Post( $post );
+		return $posts ? (int) reset( $posts ) : 0;
 	}
 }
 

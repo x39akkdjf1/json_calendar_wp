@@ -9,9 +9,11 @@ A lightweight WordPress plugin that fetches calendar events from a JSON endpoint
 - Displays upcoming events in a responsive grid.
 - Provides a single featured view for the next upcoming event.
 - Provides an archive view containing past events only.
+- Syncs events into a dedicated `json_calendar_event` custom post type.
+- Stores event data in real post meta for Elementor Dynamic Tags and ACF.
 - Supports configurable result limits.
 - Caches remote JSON responses for 15 minutes.
-- Includes an admin settings page for the endpoint and next-event headline.
+- Includes an admin settings page for the endpoint, next-event headline, and manual sync.
 - Escapes and sanitizes output for safer WordPress rendering.
 - Requires WordPress 5.8+ and PHP 7.4+.
 
@@ -75,6 +77,10 @@ The **Next-event headline** setting controls the first line in the featured next
 ```text
 Next up
 ```
+
+### Manual sync
+
+Use **Settings → JSON Calendar → Sync now** to immediately fetch the endpoint and create or update the synced event posts. The settings page also shows the last sync time and processed-event count.
 
 ## Shortcode usage
 
@@ -163,6 +169,22 @@ A shortcode can override the configured endpoint:
 | `description` | Event description. `details` and `content` are also accepted. |
 | `image` | Event image URL. |
 | `reference` | Event reference identifier. |
+
+## Synced event posts and custom fields
+
+Each synced event is stored as a real `json_calendar_event` post at `/json-calendar-event/<event-slug>/`.
+
+The plugin writes these post-meta keys on every sync:
+
+- `_json_calendar_reference`
+- `_json_calendar_image_url`
+- `_json_calendar_date`
+- `_json_calendar_date_end`
+- `_json_calendar_time_start`
+- `_json_calendar_time_end`
+- `_json_calendar_description`
+
+The description is also mirrored into `post_content`, and the image is sideloaded as the featured image when possible. This lets Elementor Theme Builder single templates, Dynamic Tags → Custom Field, and ACF read the event data directly from normal WordPress posts.
 
 ## Date behavior
 
