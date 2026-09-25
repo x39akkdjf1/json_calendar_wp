@@ -308,7 +308,7 @@ final class JSON_Calendar_WP {
 		}
 
 		$count = count( $processed_post_ids );
-		$trashed = $seen ? $this->trash_missing_events( $url, array_keys( $seen ) ) : 0;
+		$trashed = $this->trash_missing_events( $url, array_keys( $seen ) );
 		$result = array( 'count' => $count, 'synced' => $count, 'trashed' => $trashed, 'errors' => array_values( array_unique( $errors ) ) );
 
 		if ( $update_status ) {
@@ -345,6 +345,9 @@ final class JSON_Calendar_WP {
 		);
 
 		if ( $post_id ) {
+			if ( 'trash' === get_post_status( $post_id ) ) {
+				wp_untrash_post( $post_id );
+			}
 			$postarr['ID'] = $post_id;
 			$post_id = wp_update_post( wp_slash( $postarr ), true );
 		} else {
@@ -408,12 +411,11 @@ final class JSON_Calendar_WP {
 			return new WP_Error( 'sync_failed', __( 'A calendar event image could not be downloaded.', 'json-calendar-wp' ) );
 		}
 
+		update_post_meta( $post_id, self::META_IMAGE_ID, $attachment_id );
+		set_post_thumbnail( $post_id, $attachment_id );
 		if ( $previous_attachment_id && $previous_attachment_id !== $attachment_id ) {
 			$this->delete_attachment_if_exclusive( $previous_attachment_id, $post_id );
 		}
-
-		update_post_meta( $post_id, self::META_IMAGE_ID, $attachment_id );
-		set_post_thumbnail( $post_id, $attachment_id );
 		return true;
 	}
 
