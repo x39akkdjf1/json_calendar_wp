@@ -191,6 +191,10 @@ final class JSON_Calendar_WP {
 		if ( is_wp_error( $result ) ) {
 			$args['json_calendar_sync'] = 'error';
 			$args['message'] = $result->get_error_message();
+		} elseif ( ! empty( $result['errors'] ) ) {
+			$args['json_calendar_sync'] = 'error';
+			$args['message'] = implode( ' ', array_unique( $result['errors'] ) );
+			$args['count'] = isset( $result['count'] ) ? absint( $result['count'] ) : 0;
 		} else {
 			$args['json_calendar_sync'] = 'success';
 			$args['count'] = isset( $result['count'] ) ? absint( $result['count'] ) : 0;
@@ -302,9 +306,9 @@ final class JSON_Calendar_WP {
 
 		set_transient( $key, 1, 15 * MINUTE_IN_SECONDS );
 		$result = $this->sync_entries( $url, $entries, $url === esc_url_raw( get_option( self::OPTION_ENDPOINT, '' ) ) );
-		if ( is_wp_error( $result ) && $url === esc_url_raw( get_option( self::OPTION_ENDPOINT, '' ) ) ) {
+		if ( ! empty( $result['errors'] ) && $url === esc_url_raw( get_option( self::OPTION_ENDPOINT, '' ) ) ) {
 			delete_transient( $key );
-			update_option( self::OPTION_LAST_SYNC_ERROR, $result->get_error_message(), false );
+			update_option( self::OPTION_LAST_SYNC_ERROR, implode( ' ', array_unique( $result['errors'] ) ), false );
 		}
 	}
 
@@ -338,10 +342,15 @@ final class JSON_Calendar_WP {
 			}
 
 			$seen[ $reference ] = true;
-			$post_id = $this->upsert_event_post( $entry, $url, $reference );
-			if ( is_wp_error( $post_id ) ) {
-				$errors[] = $post_id->get_error_message();
+			$save_result = $this->upsert_event_post( $entry, $url, $reference );
+			if ( is_wp_error( $save_result ) ) {
+				$errors[] = $save_result->get_error_message();
 				continue;
+			}
+
+			$post_id = isset( $save_result['post_id'] ) ? absint( $save_result['post_id'] ) : 0;
+			if ( ! empty( $save_result['error'] ) ) {
+				$errors[] = (string) $save_result['error'];
 			}
 
 			if ( $post_id ) {
@@ -349,22 +358,21 @@ final class JSON_Calendar_WP {
 			}
 		}
 
-		$error = $errors ? new WP_Error( 'sync_failed', implode( ' ', array_unique( $errors ) ) ) : null;
 		$count = count( $processed_post_ids );
-		$trashed = $error ? 0 : $this->trash_missing_events( $url, array_keys( $seen ) );
-		$result = array( 'count' => $count + $trashed, 'synced' => $count, 'trashed' => $trashed );
+		$trashed = $this->trash_missing_events( $url, array_keys( $seen ) );
+		$result = array( 'count' => $count + $trashed, 'synced' => $count, 'trashed' => $trashed, 'errors' => array_values( array_unique( $errors ) ) );
 
 		if ( $update_status ) {
 			update_option( self::OPTION_LAST_SYNC, current_time( 'timestamp' ), false );
 			update_option( self::OPTION_LAST_SYNC_COUNT, $result['count'], false );
-			if ( $error ) {
-				update_option( self::OPTION_LAST_SYNC_ERROR, $error->get_error_message(), false );
+			if ( $result['errors'] ) {
+				update_option( self::OPTION_LAST_SYNC_ERROR, implode( ' ', $result['errors'] ), false );
 			} else {
 				delete_option( self::OPTION_LAST_SYNC_ERROR );
 			}
 		}
 
-		return $error ? $error : $result;
+		return $result;
 	}
 
 	private function upsert_event_post( $entry, $url, $reference ) {
@@ -406,10 +414,11 @@ final class JSON_Calendar_WP {
 		update_post_meta( $post_id, self::META_DESCRIPTION, $description );
 		update_post_meta( $post_id, self::META_SOURCE_URL, $url );
 
+		$error_message = '';
 		if ( $image ) {
 			$image_result = $this->sync_featured_image( $post_id, $image, $previous_image );
 			if ( is_wp_error( $image_result ) ) {
-				return $image_result;
+				$error_message = $image_result->get_error_message();
 			}
 		} else {
 			$attachment_id = absint( get_post_meta( $post_id, self::META_IMAGE_ID, true ) );
@@ -420,7 +429,10 @@ final class JSON_Calendar_WP {
 			}
 		}
 
-		return (int) $post_id;
+		return array(
+			'post_id' => (int) $post_id,
+			'error' => $error_message,
+		);
 	}
 
 	private function sync_featured_image( $post_id, $image_url, $previous_image ) {
