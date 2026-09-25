@@ -281,6 +281,10 @@ final class JSON_Calendar_WP {
 	}
 
 	public function render_frontend_styles() {
+		if ( ! is_singular( self::POST_TYPE ) ) {
+			return;
+		}
+
 		echo '<style id="json-calendar-wp-event-content-styles">.json-calendar-event-meta{margin-bottom:0}.json-calendar-event-description-spaced{margin-top:1.5rem}</style>';
 	}
 
