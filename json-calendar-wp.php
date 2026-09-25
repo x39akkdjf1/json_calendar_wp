@@ -285,9 +285,7 @@ final class JSON_Calendar_WP {
 			return;
 		}
 
-		wp_register_style( 'json-calendar-wp-event-content', false, array(), self::CACHE_VERSION );
-		wp_enqueue_style( 'json-calendar-wp-event-content' );
-		wp_add_inline_style( 'json-calendar-wp-event-content', '.json-calendar-event-meta{margin-bottom:0}.json-calendar-event-description-spaced{margin-top:1.5rem}' );
+		wp_enqueue_style( 'json-calendar-wp-event-content', plugin_dir_url( __FILE__ ) . 'json-calendar-wp.css', array(), self::CACHE_VERSION );
 	}
 
 	private function sync_endpoint( $url, $force = false, $update_status = true ) {
