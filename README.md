@@ -236,7 +236,7 @@ Example with a label and class:
 [json_calendar_meta field="date" label="Date" class="event-date"]
 ```
 
-The shortcode only renders values on real single `json_calendar_event` pages. On unrelated pages it returns an empty string.
+The shortcode renders values on real single `json_calendar_event` pages and in the Site Editor's event preview context. On unrelated pages it returns an empty string.
 
 ## Date behavior
 
