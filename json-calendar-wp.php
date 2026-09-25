@@ -43,6 +43,7 @@ final class JSON_Calendar_WP {
 		add_action( 'admin_init', array( $this, 'register_settings' ) );
 		add_filter( 'cron_schedules', array( $this, 'add_cron_schedule' ) );
 		add_action( 'init', array( $this, 'register_post_type' ) );
+		add_action( 'wp_enqueue_scripts', array( $this, 'enqueue_frontend_styles' ) );
 		add_action( 'init', array( $this, 'ensure_cron_schedule' ) );
 		add_action( self::CRON_HOOK, array( $this, 'run_scheduled_sync' ) );
 		add_action( 'admin_post_json_calendar_wp_sync_now', array( $this, 'handle_manual_sync' ) );
@@ -259,7 +260,7 @@ final class JSON_Calendar_WP {
 			} else {
 				if ( $image && $event_url ) {
 					$card_label = sprintf( __( 'Mehr: %s', 'json-calendar-wp' ), $title );
-					$output .= '<a class="json-calendar-card-link" href="' . esc_url( $event_url ) . '" aria-label="' . esc_attr( $card_label ) . '"><img class="json-calendar-image" src="' . esc_url( $image ) . '" alt="" loading="lazy" /><span class="json-calendar-card-overlay" aria-hidden="true">' . esc_html__( 'Mehr', 'json-calendar-wp' ) . '</span></a>';
+					$output .= '<a class="json-calendar-card-link" href="' . esc_url( $event_url ) . '" aria-label="' . esc_attr( $card_label ) . '"><img class="json-calendar-image" src="' . esc_url( $image ) . '" alt="" loading="lazy" /><span class="json-calendar-card-overlay" aria-hidden="true"><span class="json-calendar-card-overlay-title">' . esc_html( $title ) . '</span><span class="json-calendar-card-overlay-more">' . esc_html__( 'Mehr', 'json-calendar-wp' ) . '</span></span></a>';
 				} else {
 					if ( $image ) $output .= '<img class="json-calendar-image" src="' . esc_url( $image ) . '" alt="' . esc_attr( $title ) . '" loading="lazy" />';
 					$output .= '<div class="json-calendar-details"><h2 class="json-calendar-title">' . ( $event_url ? '<a href="' . esc_url( $event_url ) . '">' . esc_html( $title ) . '</a>' : esc_html( $title ) ) . '</h2>';
@@ -276,7 +277,20 @@ final class JSON_Calendar_WP {
 	}
 
 	private function get_shortcode_styles( $id ) {
-		return '<style>#' . $id . ' .json-calendar-list{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:1rem;list-style:none;margin:0;padding:0}#' . $id . ' .json-calendar-entry{position:relative;min-width:0}#' . $id . ' .json-calendar-card{position:relative;width:100%;background:#fff;overflow:hidden}#' . $id . ' .json-calendar-card-link{position:relative;display:block;background:#000;color:inherit;text-decoration:none}#' . $id . ' .json-calendar-card-link:focus{outline:none}#' . $id . ' .json-calendar-card-link:focus-visible{outline:3px solid #fff;outline-offset:-3px;box-shadow:0 0 0 3px rgba(0,0,0,.75)}#' . $id . ' .json-calendar-card-link .json-calendar-image{display:block;width:100%;height:auto;aspect-ratio:4/5;object-fit:cover;object-position:center;opacity:1;transition:opacity .2s ease}#' . $id . ' .json-calendar-card-overlay{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;color:#fff;font-size:clamp(1rem,1.6vw,1.3rem);font-weight:700;letter-spacing:.02em;opacity:0;transition:opacity .2s ease;pointer-events:none}#' . $id . ' .json-calendar-card-link:hover .json-calendar-image,#' . $id . ' .json-calendar-card-link:focus .json-calendar-image,#' . $id . ' .json-calendar-card-link:focus-visible .json-calendar-image{opacity:.3}#' . $id . ' .json-calendar-card-link:hover .json-calendar-card-overlay,#' . $id . ' .json-calendar-card-link:focus .json-calendar-card-overlay,#' . $id . ' .json-calendar-card-link:focus-visible .json-calendar-card-overlay{opacity:1}#' . $id . ' .json-calendar-image{display:block;width:100%;height:auto}#' . $id . ' .json-calendar-details{padding:1.25rem;background:#fff;color:#000}#' . $id . ' .json-calendar-title{margin:0 0 .7rem;font-size:1.35rem;line-height:1.2}#' . $id . ' .json-calendar-date,#' . $id . ' .json-calendar-time{margin:.25rem 0;color:#333;font-family:Arial,Helvetica,sans-serif;font-style:italic;font-size:.85rem}#' . $id . ' .json-calendar-description{margin:.8rem 0;line-height:1.45}#' . $id . '.json-calendar-next .json-calendar-list{display:block}#' . $id . '.json-calendar-next .json-calendar-entry{width:100%;max-width:1700px;margin:0 auto}#' . $id . '.json-calendar-next .json-calendar-card{width:100%;height:clamp(500px,41.176vw,700px);min-height:500px;max-height:700px;background:#111}#' . $id . '.json-calendar-next .json-calendar-image{display:block;width:100%;height:100%;opacity:.8;object-fit:cover;object-position:center}#' . $id . '.json-calendar-next .json-calendar-details{position:absolute;right:4%;bottom:4%;left:4%;padding:0;background:transparent;color:#fff;text-align:right}#' . $id . '.json-calendar-next .wp-block-cover__inner-container{box-sizing:border-box!important;width:100%!important;max-width:none!important;margin:0!important;padding:0!important;display:flex;flex-direction:column;align-items:flex-end;justify-content:flex-end;color:#fff;text-align:right}#' . $id . '.json-calendar-next .wp-block-cover__inner-container>*{max-width:none!important;margin-left:0!important;margin-right:0!important;text-align:right}#' . $id . '.json-calendar-next .json-calendar-next-heading,#' . $id . '.json-calendar-next .json-calendar-title,#' . $id . '.json-calendar-next .json-calendar-more{text-shadow:none;text-align:right}#' . $id . '.json-calendar-next .json-calendar-next-heading{display:block;margin:0;color:#fff;font-size:clamp(1.2rem,2.4vw,2.4rem);font-weight:400;line-height:1.1}#' . $id . '.json-calendar-next .json-calendar-title{margin:.15rem 0 0;color:#fff;font-size:clamp(1.5rem,3.2vw,3.5rem);font-weight:800;line-height:.98;letter-spacing:-.035em;text-decoration:none}#' . $id . '.json-calendar-next .json-calendar-more{display:block;margin:.3rem 0 0;color:#fff;font-size:clamp(.9rem,1.4vw,1.2rem);font-weight:400;line-height:1.1;text-decoration:none}#' . $id . '.json-calendar-archive .json-calendar-list{grid-template-columns:repeat(3,minmax(0,1fr))}@media (max-width:900px){#' . $id . ':not(.json-calendar-next) .json-calendar-list{grid-template-columns:repeat(2,minmax(0,1fr))}}@media (max-width:600px){#' . $id . ':not(.json-calendar-next) .json-calendar-list{grid-template-columns:minmax(0,1fr)}}@media (max-width:700px){#' . $id . '.json-calendar-next .json-calendar-card{height:700px;min-height:700px;max-height:700px}}@media (prefers-reduced-motion:reduce){#' . $id . ' .json-calendar-card-link .json-calendar-image,#' . $id . ' .json-calendar-card-overlay{transition:none}}</style>';
+		return '<style>#' . $id . ' .json-calendar-list{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:1rem;list-style:none;margin:0;padding:0}#' . $id . ' .json-calendar-entry{position:relative;min-width:0}#' . $id . ' .json-calendar-card{position:relative;width:100%;background:#fff;overflow:hidden}#' . $id . ' .json-calendar-card-link{position:relative;display:block;background:#000;color:inherit;text-decoration:none}#' . $id . ' .json-calendar-card-link:focus{outline:none}#' . $id . ' .json-calendar-card-link:focus-visible{outline:3px solid #fff;outline-offset:-3px;box-shadow:0 0 0 3px rgba(0,0,0,.75)}#' . $id . ' .json-calendar-card-link .json-calendar-image{display:block;width:100%;height:auto;opacity:1;transition:opacity .2s ease}#' . $id . ' .json-calendar-card-overlay{position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:.45rem;padding:1rem;background:rgba(0,0,0,.38);color:#fff;text-align:center;opacity:0;transition:opacity .2s ease;pointer-events:none}#' . $id . ' .json-calendar-card-overlay-title{display:block;max-width:100%;font-size:clamp(1.1rem,2vw,1.5rem);font-weight:700;line-height:1.2;text-shadow:0 1px 2px rgba(0,0,0,.8)}#' . $id . ' .json-calendar-card-overlay-more{display:inline-block;padding:.3rem .8rem;border:1px solid rgba(255,255,255,.7);border-radius:999px;background:rgba(0,0,0,.28);font-size:clamp(1rem,1.6vw,1.3rem);font-weight:700;letter-spacing:.02em;text-shadow:0 1px 2px rgba(0,0,0,.8)}#' . $id . ' .json-calendar-card-link:hover .json-calendar-image,#' . $id . ' .json-calendar-card-link:focus .json-calendar-image,#' . $id . ' .json-calendar-card-link:focus-visible .json-calendar-image{opacity:.3}#' . $id . ' .json-calendar-card-link:hover .json-calendar-card-overlay,#' . $id . ' .json-calendar-card-link:focus .json-calendar-card-overlay,#' . $id . ' .json-calendar-card-link:focus-visible .json-calendar-card-overlay{opacity:1}#' . $id . ' .json-calendar-image{display:block;width:100%;height:auto}#' . $id . ' .json-calendar-details{padding:1.25rem;background:#fff;color:#000}#' . $id . ' .json-calendar-title{margin:0 0 .7rem;font-size:1.35rem;line-height:1.2}#' . $id . ' .json-calendar-date,#' . $id . ' .json-calendar-time{margin:.25rem 0;color:#333;font-family:Arial,Helvetica,sans-serif;font-style:italic;font-size:.85rem}#' . $id . ' .json-calendar-description{margin:.8rem 0;line-height:1.45}#' . $id . '.json-calendar-next .json-calendar-list{display:block}#' . $id . '.json-calendar-next .json-calendar-entry{width:100%;max-width:1700px;margin:0 auto}#' . $id . '.json-calendar-next .json-calendar-card{width:100%;height:clamp(500px,41.176vw,700px);min-height:500px;max-height:700px;background:#111}#' . $id . '.json-calendar-next .json-calendar-image{display:block;width:100%;height:100%;opacity:.8;object-fit:cover;object-position:center}#' . $id . '.json-calendar-next .json-calendar-details{position:absolute;right:4%;bottom:4%;left:4%;padding:0;background:transparent;color:#fff;text-align:right}#' . $id . '.json-calendar-next .wp-block-cover__inner-container{box-sizing:border-box!important;width:100%!important;max-width:none!important;margin:0!important;padding:0!important;display:flex;flex-direction:column;align-items:flex-end;justify-content:flex-end;color:#fff;text-align:right}#' . $id . '.json-calendar-next .wp-block-cover__inner-container>*{max-width:none!important;margin-left:0!important;margin-right:0!important;text-align:right}#' . $id . '.json-calendar-next .json-calendar-next-heading,#' . $id . '.json-calendar-next .json-calendar-title,#' . $id . '.json-calendar-next .json-calendar-more{text-shadow:none;text-align:right}#' . $id . '.json-calendar-next .json-calendar-next-heading{display:block;margin:0;color:#fff;font-size:clamp(1.2rem,2.4vw,2.4rem);font-weight:400;line-height:1.1}#' . $id . '.json-calendar-next .json-calendar-title{margin:.15rem 0 0;color:#fff;font-size:clamp(1.5rem,3.2vw,3.5rem);font-weight:800;line-height:.98;letter-spacing:-.035em;text-decoration:none}#' . $id . '.json-calendar-next .json-calendar-more{display:block;margin:.3rem 0 0;color:#fff;font-size:clamp(.9rem,1.4vw,1.2rem);font-weight:400;line-height:1.1;text-decoration:none}#' . $id . '.json-calendar-archive .json-calendar-list{grid-template-columns:repeat(3,minmax(0,1fr))}@media (max-width:900px){#' . $id . ':not(.json-calendar-next) .json-calendar-list{grid-template-columns:repeat(2,minmax(0,1fr))}}@media (max-width:600px){#' . $id . ':not(.json-calendar-next) .json-calendar-list{grid-template-columns:minmax(0,1fr)}}@media (max-width:700px){#' . $id . '.json-calendar-next .json-calendar-card{height:700px;min-height:700px;max-height:700px}}@media (prefers-reduced-motion:reduce){#' . $id . ' .json-calendar-card-link .json-calendar-image,#' . $id . ' .json-calendar-card-overlay{transition:none}}</style>';
+	}
+
+	/**
+	 * Enqueue frontend styles for synced single-event content.
+	 *
+	 * This remains public because WordPress action callbacks must be callable outside the class.
+	 */
+	public function enqueue_frontend_styles() {
+		if ( ! is_singular( self::POST_TYPE ) ) {
+			return;
+		}
+
+		wp_enqueue_style( 'json-calendar-wp-event-content', plugin_dir_url( __FILE__ ) . 'json-calendar-wp.css', array(), self::CACHE_VERSION );
 	}
 
 	private function sync_endpoint( $url, $force = false, $update_status = true ) {
@@ -353,40 +367,43 @@ final class JSON_Calendar_WP {
 		$time_end = $this->value( $entry, array( 'time_end' ) );
 		$description = $this->value( $entry, array( 'description', 'details', 'content' ) );
 		$post_content = '';
+		$meta_line = '';
 
 		if ( $date ) {
 			$formatted_date = $this->format_date_only( $date );
 			$normalized_date = $this->source_date_only( $date );
 			$date_datetime = $this->machine_date_value( $date );
-			$post_content .= '<p class="json-calendar-event-date"><strong>' . esc_html__( 'Date:', 'json-calendar-wp' ) . '</strong> <time' . ( $date_datetime ? ' datetime="' . esc_attr( $date_datetime ) . '"' : '' ) . '>' . esc_html( $formatted_date ) . '</time>';
+			$meta_line .= '<strong>' . esc_html__( 'Date:', 'json-calendar-wp' ) . '</strong> <time' . ( $date_datetime ? ' datetime="' . esc_attr( $date_datetime ) . '"' : '' ) . '>' . esc_html( $formatted_date ) . '</time>';
 
 			if ( $end && $end !== $date ) {
 				$formatted_end = $this->format_date_only( $end );
 				$normalized_end = $this->source_date_only( $end );
 				if ( $normalized_end !== $normalized_date ) {
 					$end_datetime = $this->machine_date_value( $end );
-					$post_content .= ' – <time' . ( $end_datetime ? ' datetime="' . esc_attr( $end_datetime ) . '"' : '' ) . '>' . esc_html( $formatted_end ) . '</time>';
+					$meta_line .= ' – <time' . ( $end_datetime ? ' datetime="' . esc_attr( $end_datetime ) . '"' : '' ) . '>' . esc_html( $formatted_end ) . '</time>';
 				}
 			}
-
-			$post_content .= '</p>';
 		}
 
 		if ( $time_start || $time_end ) {
-			$post_content .= '<p class="json-calendar-event-time"><strong>' . esc_html__( 'Time:', 'json-calendar-wp' ) . '</strong> ';
+			$meta_line .= $meta_line ? ', ' : '';
+			$meta_line .= '<strong>' . esc_html__( 'Time:', 'json-calendar-wp' ) . '</strong> ';
 
 			if ( $time_start ) {
 				$time_start_datetime = $this->machine_time_value( $time_start );
-				$post_content .= '<time' . ( $time_start_datetime ? ' datetime="' . esc_attr( $time_start_datetime ) . '"' : '' ) . '>' . esc_html( $time_start ) . '</time>';
+				$meta_line .= '<time' . ( $time_start_datetime ? ' datetime="' . esc_attr( $time_start_datetime ) . '"' : '' ) . '>' . esc_html( $time_start ) . '</time>';
 			}
 
 			if ( $time_end ) {
-				$post_content .= $time_start ? ' – ' : '';
+				$meta_line .= $time_start ? ' – ' : '';
 				$time_end_datetime = $this->machine_time_value( $time_end );
-				$post_content .= '<time' . ( $time_end_datetime ? ' datetime="' . esc_attr( $time_end_datetime ) . '"' : '' ) . '>' . esc_html( $time_end ) . '</time>';
+				$meta_line .= '<time' . ( $time_end_datetime ? ' datetime="' . esc_attr( $time_end_datetime ) . '"' : '' ) . '>' . esc_html( $time_end ) . '</time>';
 			}
+		}
 
-			$post_content .= '</p>';
+		if ( $meta_line ) {
+			$meta_class = $description ? 'json-calendar-event-meta json-calendar-event-meta-spaced' : 'json-calendar-event-meta';
+			$post_content .= '<p class="' . esc_attr( $meta_class ) . '">' . $meta_line . '</p>';
 		}
 
 		if ( $description ) {

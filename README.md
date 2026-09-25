@@ -90,7 +90,7 @@ Use **Settings → JSON Calendar → Sync now** to immediately fetch the endpoin
 [json_calendar]
 ```
 
-The standard view displays upcoming events as image-only cards in a responsive three-column grid. Each image links to the synced event post permalink and shows a `Mehr` hover/focus overlay. If an event has no image or no mapped synced-post permalink, the plugin falls back to the existing text-based event output.
+The standard view displays upcoming events as image-only cards in a responsive three-column grid. Each image links to the synced event post permalink and keeps its original aspect ratio without height cropping. On hover/focus, the image fades back and shows the event title above centered white `Mehr` text. If an event has no image or no mapped synced-post permalink, the plugin falls back to the existing text-based event output.
 
 Optional limit:
 
@@ -128,7 +128,7 @@ Equivalent mode syntax:
 [json_calendar archive="true"]
 ```
 
-The archive displays events that have already happened as image-only cards in the same responsive grid. Each image links to the synced event post permalink, and events without an image or a mapped synced-post permalink fall back to the existing text-based event output. Archive events are ordered with the most recently finished event first.
+The archive displays events that have already happened as image-only cards in the same responsive grid. Each image links to the synced event post permalink, keeps its original aspect ratio without height cropping, and shows the same title-plus-`Mehr` hover/focus treatment. Events without an image or a mapped synced-post permalink fall back to the existing text-based event output. Archive events are ordered with the most recently finished event first.
 
 Optional limit:
 
@@ -186,7 +186,7 @@ The plugin writes these underscore-prefixed hidden post-meta keys on every sync:
 - `_json_calendar_source_url`
 - `_json_calendar_image_id` (only when an image has been sideloaded successfully)
 
-The synced event date/time metadata and description are also mirrored into `post_content`, so block themes can display them through the standard Post Content block after a sync. Dates are formatted with the site's WordPress date format, while `time_start` and `time_end` are mirrored as escaped feed values without additional reformatting. The image is sideloaded as the featured image when possible. The underscore prefix keeps these fields hidden from the classic Custom Fields metabox, but Elementor Theme Builder Dynamic Tags → Custom Field and ACF can still read them directly by meta key from the synced posts.
+The synced event date/time metadata and description are also mirrored into `post_content`, so block themes can display them through the standard Post Content block after a sync. When available, the synced single-post content renders date and time on one metadata line using the `Date:` / `Time:` wording and keeps visible spacing before the following description without altering the original description HTML. Dates are formatted with the site's WordPress date format, while `time_start` and `time_end` are mirrored as escaped feed values without additional reformatting. The image is sideloaded as the featured image when possible. The underscore prefix keeps these fields hidden from the classic Custom Fields metabox, but Elementor Theme Builder Dynamic Tags → Custom Field and ACF can still read them directly by meta key from the synced posts.
 
 ## Date behavior
 
