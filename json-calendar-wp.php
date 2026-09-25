@@ -185,7 +185,14 @@ final class JSON_Calendar_WP {
 		<tr><th scope="row"><label for="json_calendar_wp_next_heading"><?php echo esc_html__( 'Next-event headline', 'json-calendar-wp' ); ?></label></th><td><input type="text" class="regular-text" id="json_calendar_wp_next_heading" name="<?php echo esc_attr( self::OPTION_NEXT_HEADING ); ?>" value="<?php echo esc_attr( get_option( self::OPTION_NEXT_HEADING, __( 'Next up', 'json-calendar-wp' ) ) ); ?>" /></td></tr>
 		</table><?php submit_button(); ?></form>
 		<h2><?php echo esc_html__( 'Synchronization', 'json-calendar-wp' ); ?></h2>
-		<p><?php echo esc_html( $last_sync ? sprintf( __( 'Last sync: %1$s · %2$d synced, %3$d removed.', 'json-calendar-wp' ), wp_date( get_option( 'date_format' ) . ' ' . get_option( 'time_format' ), $last_sync ), absint( $last_count ), absint( $last_trashed ) ) : __( 'Last sync: not yet run.', 'json-calendar-wp' ) ); ?></p>
+		<p><?php
+		if ( $last_sync ) {
+			/* translators: 1: last sync date/time, 2: synced event count, 3: removed event count. */
+			echo esc_html( sprintf( __( 'Last sync: %1$s · %2$d synced, %3$d removed.', 'json-calendar-wp' ), wp_date( get_option( 'date_format' ) . ' ' . get_option( 'time_format' ), $last_sync ), absint( $last_count ), absint( $last_trashed ) ) );
+		} else {
+			echo esc_html__( 'Last sync: not yet run.', 'json-calendar-wp' );
+		}
+		?></p>
 		<?php if ( $last_error ) : ?>
 			<p><strong><?php echo esc_html__( 'Last sync error:', 'json-calendar-wp' ); ?></strong> <?php echo esc_html( $last_error ); ?></p>
 		<?php endif; ?>
@@ -212,7 +219,7 @@ final class JSON_Calendar_WP {
 			$message = sprintf( __( 'Calendar sync completed. %1$d synced, %2$d removed.', 'json-calendar-wp' ), $count, $trashed );
 			$class = 'notice notice-success';
 		} elseif ( 'error' === $state ) {
-			$message = isset( $_GET['message'] ) ? sanitize_text_field( wp_unslash( $_GET['message'] ) ) : __( 'Calendar sync failed.', 'json-calendar-wp' );
+			$message = isset( $_GET['message'] ) ? wp_strip_all_tags( wp_unslash( $_GET['message'] ) ) : __( 'Calendar sync failed.', 'json-calendar-wp' );
 			$class = 'notice notice-error';
 		}
 
@@ -354,7 +361,11 @@ final class JSON_Calendar_WP {
 			$post_id = wp_insert_post( wp_slash( $postarr ), true );
 		}
 
-		if ( is_wp_error( $post_id ) || ! $post_id ) {
+		if ( is_wp_error( $post_id ) ) {
+			return $post_id;
+		}
+
+		if ( ! $post_id ) {
 			return new WP_Error( 'sync_failed', __( 'A calendar event could not be saved.', 'json-calendar-wp' ) );
 		}
 
