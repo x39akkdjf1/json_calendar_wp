@@ -286,6 +286,10 @@ final class JSON_Calendar_WP {
 	 * This remains public because WordPress action callbacks must be callable outside the class.
 	 */
 	public function enqueue_frontend_styles() {
+		if ( ! is_singular( self::POST_TYPE ) ) {
+			return;
+		}
+
 		wp_enqueue_style( 'json-calendar-wp-event-content', plugin_dir_url( __FILE__ ) . 'json-calendar-wp.css', array(), self::CACHE_VERSION );
 	}
 
@@ -398,12 +402,12 @@ final class JSON_Calendar_WP {
 		}
 
 		if ( $meta_line ) {
-			$post_content .= '<p class="json-calendar-event-meta">' . $meta_line . '</p>';
+			$meta_class = $description ? 'json-calendar-event-meta json-calendar-event-meta-spaced' : 'json-calendar-event-meta';
+			$post_content .= '<p class="' . esc_attr( $meta_class ) . '">' . $meta_line . '</p>';
 		}
 
 		if ( $description ) {
-			$description_class = $meta_line ? 'json-calendar-event-description json-calendar-event-description-spaced' : 'json-calendar-event-description';
-			$post_content .= '<div class="' . esc_attr( $description_class ) . '">' . wp_kses_post( $description ) . '</div>';
+			$post_content .= wp_kses_post( $description );
 		}
 		$post_id = isset( $existing_posts[ $reference ] ) ? absint( $existing_posts[ $reference ] ) : 0;
 		$previous_image = $post_id ? (string) get_post_meta( $post_id, self::META_IMAGE_URL, true ) : '';
