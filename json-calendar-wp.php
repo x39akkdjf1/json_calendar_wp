@@ -20,11 +20,14 @@ final class JSON_Calendar_WP {
 	const OPTION_LAST_SYNC_ERROR = 'json_calendar_wp_last_sync_error';
 	const OPTION_SCHEDULE_LOCK = 'json_calendar_wp_schedule_lock';
 	const SHORTCODE = 'json_calendar';
+	const META_SHORTCODE = 'json_calendar_meta';
 	const CACHE_VERSION = '13';
 	const POST_TYPE = 'json_calendar_event';
 	const REWRITE_SLUG = 'json-calendar-event';
 	const CRON_HOOK = 'json_calendar_wp_sync_events';
 	const CRON_SCHEDULE = 'json_calendar_15_minutes';
+	private $rest_request_depth = 0;
+	private $rest_request_stack = array();
 
 	// These keys stay underscore-prefixed so sync bookkeeping stays out of the classic Custom Fields UI.
 	// Elementor Dynamic Tags and ACF can still read them directly as normal post meta values.
@@ -46,7 +49,12 @@ final class JSON_Calendar_WP {
 		add_action( 'init', array( $this, 'ensure_cron_schedule' ) );
 		add_action( self::CRON_HOOK, array( $this, 'run_scheduled_sync' ) );
 		add_action( 'admin_post_json_calendar_wp_sync_now', array( $this, 'handle_manual_sync' ) );
+		add_filter( 'rest_pre_dispatch', array( $this, 'capture_rest_request' ), 10, 3 );
+		add_filter( 'rest_post_dispatch', array( $this, 'release_rest_request' ), 10, 3 );
+		add_action( 'wp_enqueue_scripts', array( $this, 'register_shortcode_style' ) );
+		add_action( 'enqueue_block_assets', array( $this, 'register_shortcode_style' ) );
 		add_shortcode( self::SHORTCODE, array( $this, 'render_shortcode' ) );
+		add_shortcode( self::META_SHORTCODE, array( $this, 'render_event_meta_shortcode' ) );
 	}
 
 	public static function activate() {
@@ -125,6 +133,26 @@ final class JSON_Calendar_WP {
 		if ( $endpoint ) {
 			$this->sync_endpoint( $endpoint, true, true );
 		}
+	}
+
+	public function capture_rest_request( $result, $server, $request ) {
+		if ( $request instanceof WP_REST_Request ) {
+			++$this->rest_request_depth;
+			$this->rest_request_stack[ $this->rest_request_depth ] = $request;
+		}
+
+		return $result;
+	}
+
+	public function release_rest_request( $result, $server, $request ) {
+		if ( $request instanceof WP_REST_Request ) {
+			unset( $this->rest_request_stack[ $this->rest_request_depth ] );
+			if ( $this->rest_request_depth > 0 ) {
+				--$this->rest_request_depth;
+			}
+		}
+
+		return $result;
 	}
 
 	public function handle_manual_sync() {
@@ -268,6 +296,116 @@ final class JSON_Calendar_WP {
 			$output .= '</div></li>';
 		}
 		return $output . '</ul></div>';
+	}
+
+	public function render_event_meta_shortcode( $atts ) {
+		$atts = shortcode_atts(
+			array(
+				'field' => '',
+				'label' => '',
+				'class' => '',
+			),
+			$atts,
+			self::META_SHORTCODE
+		);
+
+		$field = sanitize_key( $atts['field'] );
+		if ( '' === $field ) {
+			return '';
+		}
+
+		$post_id = $this->get_current_event_post_id();
+		if ( ! $post_id ) {
+			return '';
+		}
+
+		$output = '';
+
+		switch ( $field ) {
+			case 'title':
+				$output = esc_html( get_the_title( $post_id ) );
+				break;
+
+			case 'date':
+				$output = esc_html( $this->format_date_only( (string) get_post_meta( $post_id, self::META_DATE, true ) ) );
+				break;
+
+			case 'date_end':
+				$output = esc_html( $this->format_date_only( (string) get_post_meta( $post_id, self::META_DATE_END, true ) ) );
+				break;
+
+			case 'time_start':
+				$output = esc_html( (string) get_post_meta( $post_id, self::META_TIME_START, true ) );
+				break;
+
+			case 'time_end':
+				$output = esc_html( (string) get_post_meta( $post_id, self::META_TIME_END, true ) );
+				break;
+
+			case 'time':
+				$start = (string) get_post_meta( $post_id, self::META_TIME_START, true );
+				$end = (string) get_post_meta( $post_id, self::META_TIME_END, true );
+
+				if ( '' !== $start && '' !== $end ) {
+					$output = esc_html( $start . ' – ' . $end );
+				} elseif ( '' !== $start || '' !== $end ) {
+					$output = esc_html( '' !== $start ? $start : $end );
+				}
+				break;
+
+			case 'description':
+				$output = wp_kses_post( (string) get_post_meta( $post_id, self::META_DESCRIPTION, true ) );
+				break;
+
+			case 'image':
+				$image_url = (string) get_post_meta( $post_id, self::META_IMAGE_URL, true );
+
+				if ( '' !== $image_url ) {
+					$alt_text = get_the_title( $post_id );
+					if ( '' === $alt_text ) {
+						$alt_text = __( 'Event image', 'json-calendar-wp' );
+					}
+
+					$this->enqueue_shortcode_styles();
+
+					$output = sprintf(
+						'<img class="json-calendar-meta-image" src="%1$s" alt="%2$s" loading="lazy" decoding="async" />',
+						esc_url( $image_url ),
+						esc_attr( $alt_text )
+					);
+				}
+				break;
+
+			case 'reference':
+				$output = esc_html( (string) get_post_meta( $post_id, self::META_REFERENCE, true ) );
+				break;
+		}
+
+		if ( '' === $output ) {
+			return '';
+		}
+
+		$label = sanitize_text_field( $atts['label'] );
+		$class = $this->sanitize_shortcode_class( $atts['class'] );
+		if ( '' === $label && '' === $class ) {
+			return $output;
+		}
+
+		$classes = array(
+			'json-calendar-meta',
+			sanitize_html_class( 'json-calendar-meta-' . $field ),
+		);
+
+		if ( '' !== $class ) {
+			$classes[] = $class;
+		}
+
+		return sprintf(
+			'<div class="%1$s">%2$s%3$s</div>',
+			esc_attr( implode( ' ', array_filter( $classes ) ) ),
+			'' !== $label ? '<span class="json-calendar-meta-label">' . esc_html( $label ) . '</span> ' : '',
+			$output
+		);
 	}
 
 	private function sync_endpoint( $url, $force = false, $update_status = true ) {
@@ -643,6 +781,150 @@ final class JSON_Calendar_WP {
 		);
 
 		return $posts ? (int) reset( $posts ) : 0;
+	}
+
+	private function get_current_event_post_id() {
+		$post_id = get_queried_object_id();
+		$queried_object = get_queried_object();
+		$is_event_preview = $this->is_site_editor_shortcode_preview( $queried_object );
+
+		if ( $is_event_preview && $queried_object instanceof WP_Post ) {
+			return (int) $queried_object->ID;
+		}
+
+		if ( ! is_singular( self::POST_TYPE ) ) {
+			return 0;
+		}
+
+		if ( $queried_object instanceof WP_Post && self::POST_TYPE === $queried_object->post_type ) {
+			return (int) $queried_object->ID;
+		}
+
+		if ( $post_id && self::POST_TYPE === get_post_type( $post_id ) && is_singular( self::POST_TYPE ) ) {
+			return (int) $post_id;
+		}
+
+		if ( is_singular( self::POST_TYPE ) ) {
+			$post = get_post();
+			if ( $post && self::POST_TYPE === get_post_type( $post ) ) {
+				return (int) $post->ID;
+			}
+		}
+
+		return 0;
+	}
+
+	private function sanitize_shortcode_class( $class ) {
+		if ( ! is_scalar( $class ) ) {
+			return '';
+		}
+
+		$classes = preg_split( '/\s+/', trim( (string) $class ) );
+		$classes = array_map( 'sanitize_html_class', array_filter( $classes ) );
+		$classes = array_filter( array_unique( $classes ) );
+
+		return implode( ' ', $classes );
+	}
+
+	private function register_shortcode_style() {
+		$handle = 'json-calendar-wp-shortcode';
+
+		if ( ! wp_style_is( $handle, 'registered' ) ) {
+			wp_register_style( $handle, false, array(), '2.0.0' );
+		}
+	}
+
+	private function enqueue_shortcode_styles() {
+		static $inline_style_added = false;
+
+		$this->register_shortcode_style();
+		wp_enqueue_style( 'json-calendar-wp-shortcode' );
+
+		if ( ! $inline_style_added ) {
+			wp_add_inline_style( 'json-calendar-wp-shortcode', '.json-calendar-meta-image{display:block;max-width:100%;height:auto;}' );
+			$inline_style_added = true;
+		}
+	}
+
+	private function is_site_editor_shortcode_preview( $queried_object ) {
+		if ( ! ( defined( 'REST_REQUEST' ) && REST_REQUEST ) ) {
+			return false;
+		}
+
+		if ( ! ( $queried_object instanceof WP_Post ) || self::POST_TYPE !== $queried_object->post_type ) {
+			return false;
+		}
+
+		if ( ! current_user_can( 'edit_theme_options' ) ) {
+			return false;
+		}
+
+		$current_rest_request = isset( $this->rest_request_stack[ $this->rest_request_depth ] ) ? $this->rest_request_stack[ $this->rest_request_depth ] : null;
+		if ( ! ( $current_rest_request instanceof WP_REST_Request ) ) {
+			return false;
+		}
+
+		$request_path = '/' . trim( (string) $current_rest_request->get_route(), '/' );
+
+		$preview_post_id = 0;
+		$preview_post_type = '';
+		$preview_context = $current_rest_request->get_param( 'context' );
+		$preview_attributes = $current_rest_request->get_param( 'attributes' );
+
+		if ( ! is_array( $preview_context ) && is_array( $preview_attributes ) && isset( $preview_attributes['context'] ) && is_array( $preview_attributes['context'] ) ) {
+			$preview_context = $preview_attributes['context'];
+		}
+
+		if ( is_array( $preview_context ) ) {
+			if ( isset( $preview_context['postId'] ) ) {
+				$preview_post_id = absint( $preview_context['postId'] );
+			} elseif ( isset( $preview_context['post_id'] ) ) {
+				$preview_post_id = absint( $preview_context['post_id'] );
+			}
+
+			if ( isset( $preview_context['postType'] ) ) {
+				$preview_post_type = sanitize_key( $preview_context['postType'] );
+			} elseif ( isset( $preview_context['post_type'] ) ) {
+				$preview_post_type = sanitize_key( $preview_context['post_type'] );
+			}
+		}
+
+		$post_id_input = $current_rest_request->get_param( 'post_id' );
+		if ( ! $preview_post_id && null !== $post_id_input ) {
+			$preview_post_id = absint( $post_id_input );
+		}
+
+		$post_type_input = $current_rest_request->get_param( 'post_type' );
+		if ( '' === $preview_post_type && null !== $post_type_input ) {
+			$preview_post_type = sanitize_key( $post_type_input );
+		}
+
+		$allowed_preview_routes = array(
+			'/wp/v2/block-renderer/core/shortcode',
+			'/wp-block-editor/v1/block-renderer/core/shortcode',
+			'/wp/v2/block-editor/block-renderer/core/shortcode',
+			'/wp/v2/block-renderer/parsed-block',
+			'/wp-block-editor/v1/block-renderer/parsed-block',
+			'/wp/v2/block-editor/block-renderer/parsed-block',
+		);
+		$is_shortcode_renderer = false;
+
+		foreach ( $allowed_preview_routes as $allowed_preview_route ) {
+			if ( $request_path === $allowed_preview_route || 0 === strpos( $request_path, $allowed_preview_route . '/' ) ) {
+				$is_shortcode_renderer = true;
+				break;
+			}
+		}
+
+		if ( ! $is_shortcode_renderer ) {
+			return false;
+		}
+
+		if ( $preview_post_id ) {
+			return $preview_post_id === (int) $queried_object->ID;
+		}
+
+		return '' === $preview_post_type || self::POST_TYPE === $preview_post_type;
 	}
 }
 
