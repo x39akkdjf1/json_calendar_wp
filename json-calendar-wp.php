@@ -93,18 +93,18 @@ final class JSON_Calendar_WP {
 			return;
 		}
 
-		$post = $this->event_as_post( $entry );
+		$event_post = $this->event_as_post( $entry );
 
 		global $wp_query, $post;
-		$post = $post;
-		$wp_query->posts = array( $post );
-		$wp_query->post = $post;
+		$post = $event_post;
+		$wp_query->posts = array( $event_post );
+		$wp_query->post = $event_post;
 		$wp_query->post_count = 1;
 		$wp_query->current_post = -1;
 		$wp_query->found_posts = 1;
 		$wp_query->max_num_pages = 1;
-		$wp_query->queried_object = $post;
-		$wp_query->queried_object_id = 0;
+		$wp_query->queried_object = $event_post;
+		$wp_query->queried_object_id = $event_post->ID;
 		$wp_query->is_404 = false;
 		$wp_query->is_single = true;
 		$wp_query->is_singular = true;
@@ -112,7 +112,7 @@ final class JSON_Calendar_WP {
 		$wp_query->is_home = false;
 		$wp_query->is_archive = false;
 		$wp_query->is_post_type_archive = false;
-		setup_postdata( $post );
+		setup_postdata( $event_post );
 	}
 
 	public function render_settings_page() {
