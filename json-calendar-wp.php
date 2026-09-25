@@ -329,18 +329,22 @@ final class JSON_Calendar_WP {
 		if ( $image ) {
 			$this->sync_featured_image( $post_id, $image, $previous_image );
 		} else {
+			$attachment_id = absint( get_post_meta( $post_id, self::META_IMAGE_ID, true ) );
 			delete_post_thumbnail( $post_id );
 			delete_post_meta( $post_id, self::META_IMAGE_ID );
+			if ( $attachment_id ) {
+				wp_delete_attachment( $attachment_id, true );
+			}
 		}
 
 		return (int) $post_id;
 	}
 
 	private function sync_featured_image( $post_id, $image_url, $previous_image ) {
-		$attachment_id = absint( get_post_meta( $post_id, self::META_IMAGE_ID, true ) );
-		if ( $attachment_id && $image_url === $previous_image && get_post( $attachment_id ) ) {
-			if ( get_post_thumbnail_id( $post_id ) !== $attachment_id ) {
-				set_post_thumbnail( $post_id, $attachment_id );
+		$previous_attachment_id = absint( get_post_meta( $post_id, self::META_IMAGE_ID, true ) );
+		if ( $previous_attachment_id && $image_url === $previous_image && get_post( $previous_attachment_id ) ) {
+			if ( get_post_thumbnail_id( $post_id ) !== $previous_attachment_id ) {
+				set_post_thumbnail( $post_id, $previous_attachment_id );
 			}
 			return;
 		}
@@ -352,6 +356,10 @@ final class JSON_Calendar_WP {
 		$attachment_id = media_sideload_image( $image_url, $post_id, null, 'id' );
 		if ( is_wp_error( $attachment_id ) ) {
 			return;
+		}
+
+		if ( $previous_attachment_id && $previous_attachment_id !== $attachment_id ) {
+			wp_delete_attachment( $previous_attachment_id, true );
 		}
 
 		update_post_meta( $post_id, self::META_IMAGE_ID, $attachment_id );
@@ -405,6 +413,7 @@ final class JSON_Calendar_WP {
 		if ( is_wp_error( $response ) || 200 !== wp_remote_retrieve_response_code( $response ) ) return new WP_Error( 'endpoint_unavailable', __( 'Calendar entries are temporarily unavailable.', 'json-calendar-wp' ) );
 		$data = json_decode( wp_remote_retrieve_body( $response ), true );
 		if ( JSON_ERROR_NONE !== json_last_error() ) return new WP_Error( 'invalid_json', __( 'The calendar endpoint returned invalid JSON.', 'json-calendar-wp' ) );
+		if ( ! is_array( $data ) ) return new WP_Error( 'invalid_json', __( 'The calendar endpoint returned invalid JSON.', 'json-calendar-wp' ) );
 		set_transient( $key, $data, 15 * MINUTE_IN_SECONDS );
 		return $data;
 	}
