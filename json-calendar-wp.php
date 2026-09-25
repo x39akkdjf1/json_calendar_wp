@@ -242,6 +242,7 @@ final class JSON_Calendar_WP {
 		if ( ! $entries ) return '<p class="json-calendar-empty">' . esc_html( $is_archive ? __( 'No past calendar entries found.', 'json-calendar-wp' ) : __( 'No upcoming calendar entries found.', 'json-calendar-wp' ) ) . '</p>';
 		$limit = absint( $atts['limit'] );
 		if ( $limit && ! $is_next ) $entries = array_slice( $entries, 0, $limit );
+		$event_urls = $this->get_event_urls( $entries, $atts['url'] );
 
 		$id = esc_attr( wp_unique_id( 'json-calendar-' ) );
 		$output = '<style>#' . $id . ' .json-calendar-list{display:grid;grid-template-columns:repeat(auto-fill,minmax(220px,1fr));gap:1rem;list-style:none;margin:0;padding:0}#' . $id . ' .json-calendar-entry{position:relative;min-width:0}#' . $id . ' .json-calendar-card{position:relative;width:100%;background:#fff;overflow:hidden}#' . $id . ' .json-calendar-image{display:block;width:100%;height:auto}#' . $id . ' .json-calendar-details{padding:1.25rem;background:#fff;color:#000}#' . $id . ' .json-calendar-title{margin:0 0 .7rem;font-size:1.35rem;line-height:1.2}#' . $id . ' .json-calendar-date,#' . $id . ' .json-calendar-time{margin:.25rem 0;color:#333;font-family:Arial,Helvetica,sans-serif;font-style:italic;font-size:.85rem}#' . $id . ' .json-calendar-description{margin:.8rem 0;line-height:1.45}#' . $id . '.json-calendar-next .json-calendar-list{display:block}#' . $id . '.json-calendar-next .json-calendar-entry{width:100%;max-width:1700px;margin:0 auto}#' . $id . '.json-calendar-next .json-calendar-card{width:100%;height:clamp(500px,41.176vw,700px);min-height:500px;max-height:700px;background:#111}#' . $id . '.json-calendar-next .json-calendar-image{display:block;width:100%;height:100%;opacity:.8;object-fit:cover;object-position:center}#' . $id . '.json-calendar-next .json-calendar-details{position:absolute;right:4%;bottom:4%;left:4%;padding:0;background:transparent;color:#fff;text-align:right}#' . $id . '.json-calendar-next .wp-block-cover__inner-container{box-sizing:border-box!important;width:100%!important;max-width:none!important;margin:0!important;padding:0!important;display:flex;flex-direction:column;align-items:flex-end;justify-content:flex-end;color:#fff;text-align:right}#' . $id . '.json-calendar-next .wp-block-cover__inner-container>*{max-width:none!important;margin-left:0!important;margin-right:0!important;text-align:right}#' . $id . '.json-calendar-next .json-calendar-next-heading,#' . $id . '.json-calendar-next .json-calendar-title,#' . $id . '.json-calendar-next .json-calendar-more{text-shadow:none;text-align:right}#' . $id . '.json-calendar-next .json-calendar-next-heading{display:block;margin:0;color:#fff;font-size:clamp(1.2rem,2.4vw,2.4rem);font-weight:400;line-height:1.1}#' . $id . '.json-calendar-next .json-calendar-title{margin:.15rem 0 0;color:#fff;font-size:clamp(1.5rem,3.2vw,3.5rem);font-weight:800;line-height:.98;letter-spacing:-.035em;text-decoration:none}#' . $id . '.json-calendar-next .json-calendar-more{display:block;margin:.3rem 0 0;color:#fff;font-size:clamp(.9rem,1.4vw,1.2rem);font-weight:400;line-height:1.1;text-decoration:none}#' . $id . '.json-calendar-archive .json-calendar-list{grid-template-columns:repeat(auto-fill,minmax(220px,1fr))}@media (max-width:700px){#' . $id . '.json-calendar-next .json-calendar-card{height:700px;min-height:700px;max-height:700px}}</style><div id="' . $id . '" class="json-calendar' . ( $is_next ? ' json-calendar-next' : ( $is_archive ? ' json-calendar-archive' : '' ) ) . '"><ul class="json-calendar-list">';
@@ -251,7 +252,8 @@ final class JSON_Calendar_WP {
 			$image = $this->first_image( $entry );
 			$output .= '<li class="json-calendar-entry"><div class="json-calendar-card">';
 			if ( $is_next ) {
-				$event_url = $this->get_event_url( $entry, $atts['url'] );
+				$event_url = $this->get_event_reference( $entry );
+				$event_url = isset( $event_urls[ $event_url ] ) ? $event_urls[ $event_url ] : '';
 				if ( $image ) $output .= '<img class="json-calendar-image" src="' . esc_url( $image ) . '" alt="' . esc_attr( $title ) . '" loading="lazy" />';
 				$output .= '<div class="json-calendar-details"><div class="wp-block-cover__inner-container"><span class="json-calendar-next-heading">' . esc_html( get_option( self::OPTION_NEXT_HEADING, __( 'Next up', 'json-calendar-wp' ) ) ) . '</span><h1 class="json-calendar-title">' . esc_html( $title ) . '</h1>' . ( $event_url ? '<a class="json-calendar-more" href="' . esc_url( $event_url ) . '">' . esc_html__( 'Mehr', 'json-calendar-wp' ) . '</a>' : '<span class="json-calendar-more">' . esc_html__( 'Mehr', 'json-calendar-wp' ) . '</span>' ) . '</div></div>';
 			} else {
@@ -320,12 +322,12 @@ final class JSON_Calendar_WP {
 		$result = array( 'count' => $count, 'synced' => $count, 'trashed' => $trashed, 'errors' => array_values( array_unique( $errors ) ) );
 
 		if ( $update_status ) {
+			update_option( self::OPTION_LAST_SYNC, current_time( 'timestamp' ), false );
+			update_option( self::OPTION_LAST_SYNC_COUNT, $result['count'], false );
+			update_option( self::OPTION_LAST_SYNC_TRASHED, $result['trashed'], false );
 			if ( $result['errors'] ) {
 				update_option( self::OPTION_LAST_SYNC_ERROR, implode( ' ', $result['errors'] ), false );
 			} else {
-				update_option( self::OPTION_LAST_SYNC, current_time( 'timestamp' ), false );
-				update_option( self::OPTION_LAST_SYNC_COUNT, $result['count'], false );
-				update_option( self::OPTION_LAST_SYNC_TRASHED, $result['trashed'], false );
 				delete_option( self::OPTION_LAST_SYNC_ERROR );
 			}
 		}
@@ -371,6 +373,7 @@ final class JSON_Calendar_WP {
 		}
 
 		$existing_posts[ $reference ] = (int) $post_id;
+		wp_update_post( wp_slash( array( 'ID' => $post_id, 'post_name' => $reference ) ) );
 
 		update_post_meta( $post_id, self::META_REFERENCE, $reference );
 		update_post_meta( $post_id, self::META_DATE, $date );
@@ -592,13 +595,25 @@ final class JSON_Calendar_WP {
 		return sanitize_title( $seed );
 	}
 
-	private function get_event_url( $entry, $source_url = '' ) {
-		$reference = $this->get_event_reference( $entry );
-		$post_id = $this->find_event_post_id( $reference, array( 'publish' ), $source_url );
-		if ( ! $post_id && ! $source_url ) {
-			$post_id = $this->find_event_post_id( $reference, array( 'publish' ) );
+	private function get_event_urls( $entries, $source_url = '' ) {
+		$urls = array();
+		$source_url = esc_url_raw( $source_url );
+		$post_map = $source_url ? $this->get_event_post_map( $source_url ) : array();
+
+		foreach ( $entries as $entry ) {
+			if ( ! is_array( $entry ) ) {
+				continue;
+			}
+
+			$reference = $this->get_event_reference( $entry );
+			$post_id = isset( $post_map[ $reference ] ) ? absint( $post_map[ $reference ] ) : 0;
+			if ( ! $post_id && ! $source_url ) {
+				$post_id = $this->find_event_post_id( $reference, array( 'publish' ) );
+			}
+			$urls[ $reference ] = $post_id ? get_permalink( $post_id ) : '';
 		}
-		return $post_id ? get_permalink( $post_id ) : '';
+
+		return $urls;
 	}
 
 	private function find_event_post_id( $reference, $post_status = array( 'publish' ), $source_url = '' ) {
