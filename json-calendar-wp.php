@@ -808,7 +808,6 @@ final class JSON_Calendar_WP {
 			return false;
 		}
 
-		$context = isset( $_REQUEST['context'] ) ? sanitize_key( wp_unslash( $_REQUEST['context'] ) ) : '';
 		$request_path = '';
 
 		if ( isset( $_REQUEST['rest_route'] ) ) {
@@ -819,8 +818,7 @@ final class JSON_Calendar_WP {
 
 		$preview_post_id = isset( $_REQUEST['post_id'] ) ? absint( wp_unslash( $_REQUEST['post_id'] ) ) : 0;
 
-		return 'edit' === $context
-			&& false !== strpos( $request_path, 'block-renderer/core/shortcode' )
+		return false !== strpos( $request_path, 'block-renderer/core/shortcode' )
 			&& ( ! $preview_post_id || $preview_post_id === (int) $queried_object->ID );
 	}
 }
