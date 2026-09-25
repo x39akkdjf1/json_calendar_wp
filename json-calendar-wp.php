@@ -26,6 +26,7 @@ final class JSON_Calendar_WP {
 	const REWRITE_SLUG = 'json-calendar-event';
 	const CRON_HOOK = 'json_calendar_wp_sync_events';
 	const CRON_SCHEDULE = 'json_calendar_15_minutes';
+	private $current_rest_request = null;
 
 	// These keys stay underscore-prefixed so sync bookkeeping stays out of the classic Custom Fields UI.
 	// Elementor Dynamic Tags and ACF can still read them directly as normal post meta values.
@@ -47,6 +48,7 @@ final class JSON_Calendar_WP {
 		add_action( 'init', array( $this, 'ensure_cron_schedule' ) );
 		add_action( self::CRON_HOOK, array( $this, 'run_scheduled_sync' ) );
 		add_action( 'admin_post_json_calendar_wp_sync_now', array( $this, 'handle_manual_sync' ) );
+		add_filter( 'rest_pre_dispatch', array( $this, 'capture_rest_request' ), 10, 3 );
 		add_action( 'wp_enqueue_scripts', array( $this, 'register_shortcode_style' ) );
 		add_action( 'enqueue_block_assets', array( $this, 'register_shortcode_style' ) );
 		add_shortcode( self::SHORTCODE, array( $this, 'render_shortcode' ) );
@@ -129,6 +131,14 @@ final class JSON_Calendar_WP {
 		if ( $endpoint ) {
 			$this->sync_endpoint( $endpoint, true, true );
 		}
+	}
+
+	public function capture_rest_request( $result, $server, $request ) {
+		if ( $request instanceof WP_REST_Request ) {
+			$this->current_rest_request = $request;
+		}
+
+		return $result;
 	}
 
 	public function handle_manual_sync() {
@@ -824,8 +834,6 @@ final class JSON_Calendar_WP {
 	}
 
 	private function is_site_editor_shortcode_preview( $queried_object ) {
-		global $wp;
-
 		if ( ! ( defined( 'REST_REQUEST' ) && REST_REQUEST ) ) {
 			return false;
 		}
@@ -838,54 +846,38 @@ final class JSON_Calendar_WP {
 			return false;
 		}
 
-		$request_path = '';
-		$rest_route = $this->get_request_input( 'rest_route' );
-
-		if ( isset( $wp->query_vars['rest_route'] ) ) {
-			$request_path = '/' . ltrim( (string) $wp->query_vars['rest_route'], '/' );
-		} elseif ( null !== $rest_route ) {
-			$request_path = '/' . ltrim( (string) $rest_route, '/' );
-		} elseif ( isset( $_SERVER['REQUEST_URI'] ) ) {
-			$request_uri = (string) wp_unslash( $_SERVER['REQUEST_URI'] );
-			$request_path = (string) wp_parse_url( $request_uri, PHP_URL_PATH );
-			$query_string = (string) wp_parse_url( $request_uri, PHP_URL_QUERY );
-
-			if ( $query_string ) {
-				parse_str( $query_string, $query_args );
-				if ( ! empty( $query_args['rest_route'] ) ) {
-					$request_path = '/' . ltrim( (string) $query_args['rest_route'], '/' );
-				}
-			}
+		if ( ! ( $this->current_rest_request instanceof WP_REST_Request ) ) {
+			return false;
 		}
 
-		$request_path = '/' . trim( $request_path, '/' );
+		$request_path = '/' . trim( (string) $this->current_rest_request->get_route(), '/' );
 
 		$preview_post_id = 0;
 		$preview_post_type = '';
-		$preview_context = $this->get_request_input( 'context' );
+		$preview_context = $this->current_rest_request->get_param( 'context' );
 
 		if ( is_array( $preview_context ) ) {
 			if ( isset( $preview_context['postId'] ) ) {
-				$preview_post_id = absint( wp_unslash( $preview_context['postId'] ) );
+				$preview_post_id = absint( $preview_context['postId'] );
 			} elseif ( isset( $preview_context['post_id'] ) ) {
-				$preview_post_id = absint( wp_unslash( $preview_context['post_id'] ) );
+				$preview_post_id = absint( $preview_context['post_id'] );
 			}
 
 			if ( isset( $preview_context['postType'] ) ) {
-				$preview_post_type = sanitize_key( wp_unslash( $preview_context['postType'] ) );
+				$preview_post_type = sanitize_key( $preview_context['postType'] );
 			} elseif ( isset( $preview_context['post_type'] ) ) {
-				$preview_post_type = sanitize_key( wp_unslash( $preview_context['post_type'] ) );
+				$preview_post_type = sanitize_key( $preview_context['post_type'] );
 			}
 		}
 
-		$post_id_input = $this->get_request_input( 'post_id' );
+		$post_id_input = $this->current_rest_request->get_param( 'post_id' );
 		if ( ! $preview_post_id && null !== $post_id_input ) {
-			$preview_post_id = absint( wp_unslash( $post_id_input ) );
+			$preview_post_id = absint( $post_id_input );
 		}
 
-		$post_type_input = $this->get_request_input( 'post_type' );
+		$post_type_input = $this->current_rest_request->get_param( 'post_type' );
 		if ( '' === $preview_post_type && null !== $post_type_input ) {
-			$preview_post_type = sanitize_key( wp_unslash( $post_type_input ) );
+			$preview_post_type = sanitize_key( $post_type_input );
 		}
 
 		$rest_prefix = preg_quote( rest_get_url_prefix(), '#' );
@@ -900,18 +892,6 @@ final class JSON_Calendar_WP {
 		}
 
 		return '' === $preview_post_type || self::POST_TYPE === $preview_post_type;
-	}
-
-	private function get_request_input( $key ) {
-		if ( isset( $_POST[ $key ] ) ) {
-			return $_POST[ $key ];
-		}
-
-		if ( isset( $_GET[ $key ] ) ) {
-			return $_GET[ $key ];
-		}
-
-		return null;
 	}
 }
 
