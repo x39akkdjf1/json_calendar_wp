@@ -850,7 +850,7 @@ final class JSON_Calendar_WP {
 			return false;
 		}
 
-		if ( ! current_user_can( 'edit_theme_options' ) || ! current_user_can( 'edit_post', $queried_object->ID ) ) {
+		if ( ! current_user_can( 'edit_theme_options' ) ) {
 			return false;
 		}
 

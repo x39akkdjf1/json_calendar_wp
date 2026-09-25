@@ -236,7 +236,7 @@ Example with a label and class:
 [json_calendar_meta field="date" label="Date" class="event-date"]
 ```
 
-The shortcode renders values on singular Calendar Event views, including the Site Editor's event preview context. Site Editor preview rendering requires a logged-in user who can edit templates and the previewed event post, and WordPress may sometimes provide that preview as an event post-type preview context rather than a specific preview post ID. On unrelated pages it returns an empty string.
+The shortcode renders values on singular Calendar Event views, including the Site Editor's event preview context. Site Editor preview rendering requires a logged-in user who can edit templates, and WordPress may sometimes provide that preview as an event post-type preview context rather than a specific preview post ID. On unrelated pages it returns an empty string.
 
 ## Date behavior
 
