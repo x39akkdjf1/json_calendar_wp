@@ -174,7 +174,7 @@ A shortcode can override the configured endpoint:
 
 Each synced event is stored as a real `json_calendar_event` post using the plugin's default `json-calendar-event` rewrite slug. The final permalink follows your site's permalink structure.
 
-The plugin writes these post-meta keys on every sync:
+The plugin writes these underscore-prefixed hidden post-meta keys on every sync:
 
 - `_json_calendar_reference`
 - `_json_calendar_image_url`
@@ -186,7 +186,7 @@ The plugin writes these post-meta keys on every sync:
 - `_json_calendar_source_url`
 - `_json_calendar_image_id`
 
-The description is also mirrored into `post_content`, and the image is sideloaded as the featured image when possible. This lets Elementor Theme Builder single templates, Dynamic Tags → Custom Field, and ACF read the event data directly from normal WordPress posts.
+The description is also mirrored into `post_content`, and the image is sideloaded as the featured image when possible. The underscore prefix keeps these fields hidden from the classic Custom Fields metabox, but Elementor Theme Builder Dynamic Tags → Custom Field and ACF can still read them directly by meta key from the synced posts.
 
 ## Date behavior
 

@@ -470,6 +470,7 @@ final class JSON_Calendar_WP {
 			return 0;
 		}
 
+		$seen_lookup = array_fill_keys( $seen, true );
 		$statuses = array( 'publish', 'draft', 'pending', 'future', 'private' );
 		$status_placeholders = implode( ', ', array_fill( 0, count( $statuses ), '%s' ) );
 		$query_args = array_merge(
@@ -499,7 +500,7 @@ final class JSON_Calendar_WP {
 		foreach ( $results as $row ) {
 			$post_id = isset( $row['post_id'] ) ? absint( $row['post_id'] ) : 0;
 			$reference = isset( $row['reference'] ) ? (string) $row['reference'] : '';
-			if ( ! in_array( $reference, $seen, true ) ) {
+			if ( ! isset( $seen_lookup[ $reference ] ) ) {
 				wp_trash_post( $post_id );
 				++$count;
 			}
