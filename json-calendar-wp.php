@@ -807,11 +807,9 @@ final class JSON_Calendar_WP {
 
 		$handle = 'json-calendar-wp-shortcode';
 
-		if ( wp_style_is( $handle, 'registered' ) ) {
-			return;
+		if ( ! wp_style_is( $handle, 'registered' ) ) {
+			wp_register_style( $handle, false, array(), '2.0.0' );
 		}
-
-		wp_register_style( $handle, false, array(), '2.0.0' );
 
 		if ( ! $inline_style_added ) {
 			wp_add_inline_style( $handle, '.json-calendar-meta-image{display:block;max-width:100%;height:auto;}' );
@@ -842,7 +840,16 @@ final class JSON_Calendar_WP {
 		if ( isset( $_REQUEST['rest_route'] ) ) {
 			$request_path = '/' . ltrim( (string) wp_unslash( $_REQUEST['rest_route'] ), '/' );
 		} elseif ( isset( $_SERVER['REQUEST_URI'] ) ) {
-			$request_path = (string) wp_parse_url( wp_unslash( $_SERVER['REQUEST_URI'] ), PHP_URL_PATH );
+			$request_uri = (string) wp_unslash( $_SERVER['REQUEST_URI'] );
+			$request_path = (string) wp_parse_url( $request_uri, PHP_URL_PATH );
+			$query_string = (string) wp_parse_url( $request_uri, PHP_URL_QUERY );
+
+			if ( $query_string ) {
+				parse_str( $query_string, $query_args );
+				if ( ! empty( $query_args['rest_route'] ) ) {
+					$request_path = '/' . ltrim( (string) $query_args['rest_route'], '/' );
+				}
+			}
 		}
 
 		$request_path = '/' . trim( $request_path, '/' );
