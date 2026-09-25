@@ -803,22 +803,23 @@ final class JSON_Calendar_WP {
 	}
 
 	private function register_shortcode_style() {
-		static $inline_style_added = false;
-
 		$handle = 'json-calendar-wp-shortcode';
 
 		if ( ! wp_style_is( $handle, 'registered' ) ) {
 			wp_register_style( $handle, false, array(), '2.0.0' );
 		}
-
-		if ( ! $inline_style_added ) {
-			wp_add_inline_style( $handle, '.json-calendar-meta-image{display:block;max-width:100%;height:auto;}' );
-			$inline_style_added = true;
-		}
 	}
 
 	private function enqueue_shortcode_styles() {
+		static $inline_style_added = false;
+
 		$this->register_shortcode_style();
+
+		if ( ! $inline_style_added ) {
+			wp_add_inline_style( 'json-calendar-wp-shortcode', '.json-calendar-meta-image{display:block;max-width:100%;height:auto;}' );
+			$inline_style_added = true;
+		}
+
 		wp_enqueue_style( 'json-calendar-wp-shortcode' );
 	}
 
