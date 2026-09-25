@@ -833,13 +833,12 @@ final class JSON_Calendar_WP {
 		static $inline_style_added = false;
 
 		$this->register_shortcode_style();
+		wp_enqueue_style( 'json-calendar-wp-shortcode' );
 
 		if ( ! $inline_style_added ) {
 			wp_add_inline_style( 'json-calendar-wp-shortcode', '.json-calendar-meta-image{display:block;max-width:100%;height:auto;}' );
 			$inline_style_added = true;
 		}
-
-		wp_enqueue_style( 'json-calendar-wp-shortcode' );
 	}
 
 	private function is_site_editor_shortcode_preview( $queried_object ) {
