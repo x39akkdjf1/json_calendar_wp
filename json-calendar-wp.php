@@ -251,8 +251,9 @@ final class JSON_Calendar_WP {
 			$image = $this->first_image( $entry );
 			$output .= '<li class="json-calendar-entry"><div class="json-calendar-card">';
 			if ( $is_next ) {
+				$event_url = $this->get_event_url( $entry, $atts['url'] );
 				if ( $image ) $output .= '<img class="json-calendar-image" src="' . esc_url( $image ) . '" alt="' . esc_attr( $title ) . '" loading="lazy" />';
-				$output .= '<div class="json-calendar-details"><div class="wp-block-cover__inner-container"><span class="json-calendar-next-heading">' . esc_html( get_option( self::OPTION_NEXT_HEADING, __( 'Next up', 'json-calendar-wp' ) ) ) . '</span><h1 class="json-calendar-title">' . esc_html( $title ) . '</h1><a class="json-calendar-more" href="' . esc_url( $this->get_event_url( $entry, $atts['url'] ) ) . '">' . esc_html__( 'Mehr', 'json-calendar-wp' ) . '</a></div></div>';
+				$output .= '<div class="json-calendar-details"><div class="wp-block-cover__inner-container"><span class="json-calendar-next-heading">' . esc_html( get_option( self::OPTION_NEXT_HEADING, __( 'Next up', 'json-calendar-wp' ) ) ) . '</span><h1 class="json-calendar-title">' . esc_html( $title ) . '</h1>' . ( $event_url ? '<a class="json-calendar-more" href="' . esc_url( $event_url ) . '">' . esc_html__( 'Mehr', 'json-calendar-wp' ) . '</a>' : '<span class="json-calendar-more">' . esc_html__( 'Mehr', 'json-calendar-wp' ) . '</span>' ) . '</div></div>';
 			} else {
 				if ( $image ) $output .= '<img class="json-calendar-image" src="' . esc_url( $image ) . '" alt="' . esc_attr( $title ) . '" loading="lazy" />';
 				$output .= '<div class="json-calendar-details"><h2 class="json-calendar-title">' . esc_html( $title ) . '</h2>';
@@ -319,12 +320,12 @@ final class JSON_Calendar_WP {
 		$result = array( 'count' => $count, 'synced' => $count, 'trashed' => $trashed, 'errors' => array_values( array_unique( $errors ) ) );
 
 		if ( $update_status ) {
-			update_option( self::OPTION_LAST_SYNC, current_time( 'timestamp' ), false );
-			update_option( self::OPTION_LAST_SYNC_COUNT, $result['count'], false );
-			update_option( self::OPTION_LAST_SYNC_TRASHED, $result['trashed'], false );
 			if ( $result['errors'] ) {
 				update_option( self::OPTION_LAST_SYNC_ERROR, implode( ' ', $result['errors'] ), false );
 			} else {
+				update_option( self::OPTION_LAST_SYNC, current_time( 'timestamp' ), false );
+				update_option( self::OPTION_LAST_SYNC_COUNT, $result['count'], false );
+				update_option( self::OPTION_LAST_SYNC_TRASHED, $result['trashed'], false );
 				delete_option( self::OPTION_LAST_SYNC_ERROR );
 			}
 		}
@@ -597,7 +598,7 @@ final class JSON_Calendar_WP {
 		if ( ! $post_id && ! $source_url ) {
 			$post_id = $this->find_event_post_id( $reference, array( 'publish' ) );
 		}
-		return $post_id ? get_permalink( $post_id ) : home_url( '/' . self::REWRITE_SLUG . '/' . rawurlencode( $reference ) . '/' );
+		return $post_id ? get_permalink( $post_id ) : '';
 	}
 
 	private function find_event_post_id( $reference, $post_status = array( 'publish' ), $source_url = '' ) {
