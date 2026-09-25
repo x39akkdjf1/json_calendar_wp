@@ -172,7 +172,7 @@ A shortcode can override the configured endpoint:
 
 ## Synced event posts and custom fields
 
-Each synced event is stored as a real `json_calendar_event` post at `/json-calendar-event/<event-slug>/`.
+Each synced event is stored as a real `json_calendar_event` post at `/json-calendar-event/<event-reference-or-slug>/`.
 
 The plugin writes these post-meta keys on every sync:
 
