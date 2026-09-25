@@ -839,11 +839,12 @@ final class JSON_Calendar_WP {
 		}
 
 		$request_path = '';
+		$rest_route = $this->get_request_input( 'rest_route' );
 
 		if ( isset( $wp->query_vars['rest_route'] ) ) {
 			$request_path = '/' . ltrim( (string) $wp->query_vars['rest_route'], '/' );
-		} elseif ( isset( $_REQUEST['rest_route'] ) ) {
-			$request_path = '/' . ltrim( (string) wp_unslash( $_REQUEST['rest_route'] ), '/' );
+		} elseif ( null !== $rest_route ) {
+			$request_path = '/' . ltrim( (string) $rest_route, '/' );
 		} elseif ( isset( $_SERVER['REQUEST_URI'] ) ) {
 			$request_uri = (string) wp_unslash( $_SERVER['REQUEST_URI'] );
 			$request_path = (string) wp_parse_url( $request_uri, PHP_URL_PATH );
@@ -861,27 +862,30 @@ final class JSON_Calendar_WP {
 
 		$preview_post_id = 0;
 		$preview_post_type = '';
+		$preview_context = $this->get_request_input( 'context' );
 
-		if ( isset( $_REQUEST['context'] ) && is_array( $_REQUEST['context'] ) ) {
-			if ( isset( $_REQUEST['context']['postId'] ) ) {
-				$preview_post_id = absint( wp_unslash( $_REQUEST['context']['postId'] ) );
-			} elseif ( isset( $_REQUEST['context']['post_id'] ) ) {
-				$preview_post_id = absint( wp_unslash( $_REQUEST['context']['post_id'] ) );
+		if ( is_array( $preview_context ) ) {
+			if ( isset( $preview_context['postId'] ) ) {
+				$preview_post_id = absint( wp_unslash( $preview_context['postId'] ) );
+			} elseif ( isset( $preview_context['post_id'] ) ) {
+				$preview_post_id = absint( wp_unslash( $preview_context['post_id'] ) );
 			}
 
-			if ( isset( $_REQUEST['context']['postType'] ) ) {
-				$preview_post_type = sanitize_key( wp_unslash( $_REQUEST['context']['postType'] ) );
-			} elseif ( isset( $_REQUEST['context']['post_type'] ) ) {
-				$preview_post_type = sanitize_key( wp_unslash( $_REQUEST['context']['post_type'] ) );
+			if ( isset( $preview_context['postType'] ) ) {
+				$preview_post_type = sanitize_key( wp_unslash( $preview_context['postType'] ) );
+			} elseif ( isset( $preview_context['post_type'] ) ) {
+				$preview_post_type = sanitize_key( wp_unslash( $preview_context['post_type'] ) );
 			}
 		}
 
-		if ( ! $preview_post_id && isset( $_REQUEST['post_id'] ) ) {
-			$preview_post_id = absint( wp_unslash( $_REQUEST['post_id'] ) );
+		$post_id_input = $this->get_request_input( 'post_id' );
+		if ( ! $preview_post_id && null !== $post_id_input ) {
+			$preview_post_id = absint( wp_unslash( $post_id_input ) );
 		}
 
-		if ( '' === $preview_post_type && isset( $_REQUEST['post_type'] ) ) {
-			$preview_post_type = sanitize_key( wp_unslash( $_REQUEST['post_type'] ) );
+		$post_type_input = $this->get_request_input( 'post_type' );
+		if ( '' === $preview_post_type && null !== $post_type_input ) {
+			$preview_post_type = sanitize_key( wp_unslash( $post_type_input ) );
 		}
 
 		$rest_prefix = preg_quote( rest_get_url_prefix(), '#' );
@@ -896,6 +900,18 @@ final class JSON_Calendar_WP {
 		}
 
 		return '' === $preview_post_type || self::POST_TYPE === $preview_post_type;
+	}
+
+	private function get_request_input( $key ) {
+		if ( isset( $_POST[ $key ] ) ) {
+			return $_POST[ $key ];
+		}
+
+		if ( isset( $_GET[ $key ] ) ) {
+			return $_GET[ $key ];
+		}
+
+		return null;
 	}
 }
 
