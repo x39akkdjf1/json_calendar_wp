@@ -278,6 +278,7 @@ final class JSON_Calendar_WP {
 		$seen = array();
 		$processed_post_ids = array();
 		$errors = array();
+		$existing_posts = $this->get_event_post_map( $url );
 
 		foreach ( $entries as $entry ) {
 			if ( ! is_array( $entry ) ) {
@@ -290,7 +291,7 @@ final class JSON_Calendar_WP {
 			}
 
 			$seen[ $reference ] = true;
-			$save_result = $this->upsert_event_post( $entry, $url, $reference );
+			$save_result = $this->upsert_event_post( $entry, $url, $reference, $existing_posts );
 			if ( is_wp_error( $save_result ) ) {
 				$errors[] = $save_result->get_error_message();
 				continue;
@@ -307,7 +308,7 @@ final class JSON_Calendar_WP {
 		}
 
 		$count = count( $processed_post_ids );
-		$trashed = $this->trash_missing_events( $url, array_keys( $seen ) );
+		$trashed = $seen ? $this->trash_missing_events( $url, array_keys( $seen ) ) : 0;
 		$result = array( 'count' => $count, 'synced' => $count, 'trashed' => $trashed, 'errors' => array_values( array_unique( $errors ) ) );
 
 		if ( $update_status ) {
@@ -324,7 +325,7 @@ final class JSON_Calendar_WP {
 		return $result;
 	}
 
-	private function upsert_event_post( $entry, $url, $reference ) {
+	private function upsert_event_post( $entry, $url, $reference, &$existing_posts ) {
 		$title = sanitize_text_field( $this->value( $entry, array( 'title', 'name', 'summary' ), __( 'Untitled event', 'json-calendar-wp' ) ) );
 		$image = $this->first_image( $entry );
 		$date = $this->value( $entry, array( 'date', 'start_date', 'start', 'datetime' ) );
@@ -333,7 +334,7 @@ final class JSON_Calendar_WP {
 		$time_end = $this->value( $entry, array( 'time_end' ) );
 		$description = $this->value( $entry, array( 'description', 'details', 'content' ) );
 		$post_content = $description ? wp_kses_post( $description ) : '';
-		$post_id = $this->find_event_post_id( $reference, array( 'publish', 'draft', 'pending', 'future', 'private', 'trash' ), $url );
+		$post_id = isset( $existing_posts[ $reference ] ) ? absint( $existing_posts[ $reference ] ) : 0;
 		$previous_image = $post_id ? (string) get_post_meta( $post_id, self::META_IMAGE_URL, true ) : '';
 		$postarr = array(
 			'post_title' => $title,
@@ -353,6 +354,8 @@ final class JSON_Calendar_WP {
 		if ( is_wp_error( $post_id ) || ! $post_id ) {
 			return new WP_Error( 'sync_failed', __( 'A calendar event could not be saved.', 'json-calendar-wp' ) );
 		}
+
+		$existing_posts[ $reference ] = (int) $post_id;
 
 		update_post_meta( $post_id, self::META_REFERENCE, $reference );
 		update_post_meta( $post_id, self::META_DATE, $date );
@@ -377,7 +380,7 @@ final class JSON_Calendar_WP {
 			delete_post_thumbnail( $post_id );
 			delete_post_meta( $post_id, self::META_IMAGE_ID );
 			if ( $attachment_id ) {
-				wp_delete_attachment( $attachment_id, true );
+				$this->delete_attachment_if_exclusive( $attachment_id, $post_id );
 			}
 		}
 
@@ -406,12 +409,78 @@ final class JSON_Calendar_WP {
 		}
 
 		if ( $previous_attachment_id && $previous_attachment_id !== $attachment_id ) {
-			wp_delete_attachment( $previous_attachment_id, true );
+			$this->delete_attachment_if_exclusive( $previous_attachment_id, $post_id );
 		}
 
 		update_post_meta( $post_id, self::META_IMAGE_ID, $attachment_id );
 		set_post_thumbnail( $post_id, $attachment_id );
 		return true;
+	}
+
+	private function delete_attachment_if_exclusive( $attachment_id, $post_id ) {
+		$related_posts = get_posts(
+			array(
+				'post_type' => self::POST_TYPE,
+				'post_status' => array( 'publish', 'draft', 'pending', 'future', 'private', 'trash' ),
+				'numberposts' => 1,
+				'fields' => 'ids',
+				'post__not_in' => array( $post_id ),
+				'suppress_filters' => true,
+				'meta_query' => array(
+					array(
+						'key' => self::META_IMAGE_ID,
+						'value' => $attachment_id,
+					),
+				),
+			)
+		);
+
+		if ( ! $related_posts ) {
+			wp_delete_attachment( $attachment_id, true );
+		}
+	}
+
+	private function get_event_post_map( $url ) {
+		global $wpdb;
+
+		$url = esc_url_raw( $url );
+		if ( ! $url ) {
+			return array();
+		}
+
+		$statuses = array( 'publish', 'draft', 'pending', 'future', 'private', 'trash' );
+		$status_placeholders = implode( ', ', array_fill( 0, count( $statuses ), '%s' ) );
+		$query_args = array_merge(
+			array(
+				self::META_SOURCE_URL,
+				self::META_REFERENCE,
+				self::POST_TYPE,
+			),
+			$statuses,
+			array( $url )
+		);
+		$rows = $wpdb->get_results(
+			$wpdb->prepare(
+				"SELECT DISTINCT posts.ID AS post_id, reference.meta_value AS reference
+				FROM {$wpdb->posts} AS posts
+				INNER JOIN {$wpdb->postmeta} AS source ON posts.ID = source.post_id AND source.meta_key = %s
+				INNER JOIN {$wpdb->postmeta} AS reference ON posts.ID = reference.post_id AND reference.meta_key = %s
+				WHERE posts.post_type = %s
+				AND posts.post_status IN ({$status_placeholders})
+				AND source.meta_value = %s",
+				$query_args
+			),
+			ARRAY_A
+		);
+		$map = array();
+
+		foreach ( $rows as $row ) {
+			if ( isset( $row['reference'], $row['post_id'] ) ) {
+				$map[ (string) $row['reference'] ] = absint( $row['post_id'] );
+			}
+		}
+
+		return $map;
 	}
 
 	private function trash_missing_events( $url, $seen ) {
