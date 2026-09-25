@@ -6,9 +6,9 @@ A lightweight WordPress plugin that fetches calendar events from a JSON endpoint
 
 - Fetches events from a remote JSON endpoint.
 - Supports flat arrays, `entries` arrays, `events` arrays, and reference-keyed event objects.
-- Displays upcoming events in a responsive grid.
+- Displays upcoming events in a responsive three-column image-card grid linked to synced event posts.
 - Provides a single featured view for the next upcoming event.
-- Provides an archive view containing past events only.
+- Provides an archive view containing past events as linked image cards.
 - Syncs events into a dedicated `json_calendar_event` custom post type.
 - Stores event data in real post meta for Elementor Dynamic Tags and ACF.
 - Supports configurable result limits.
@@ -90,7 +90,7 @@ Use **Settings → JSON Calendar → Sync now** to immediately fetch the endpoin
 [json_calendar]
 ```
 
-The standard view displays upcoming events in a responsive grid.
+The standard view displays upcoming events as image-only cards in a responsive three-column grid. Each image links to the synced event post permalink and shows a `Mehr` hover/focus overlay. If an event has no image, the plugin falls back to the existing text-based event output.
 
 Optional limit:
 
@@ -128,7 +128,7 @@ Equivalent mode syntax:
 [json_calendar archive="true"]
 ```
 
-The archive displays events that have already happened. Events are ordered with the most recently finished event first.
+The archive displays events that have already happened as image-only cards in the same responsive grid. Each image links to the synced event post permalink, and events without an image fall back to the existing text-based event output. Archive events are ordered with the most recently finished event first.
 
 Optional limit:
 
