@@ -758,24 +758,24 @@ final class JSON_Calendar_WP {
 
 	private function get_current_event_post_id() {
 		$post_id = get_queried_object_id();
-		$post = get_post();
+		$queried_object = get_queried_object();
 
-		if ( $post && self::POST_TYPE === get_post_type( $post ) ) {
-			if ( is_singular( self::POST_TYPE ) ) {
-				return (int) $post->ID;
-			}
+		if ( $queried_object instanceof WP_Post && self::POST_TYPE === $queried_object->post_type ) {
+			return (int) $queried_object->ID;
+		}
 
-			if ( $post_id ) {
-				return ( $post_id === (int) $post->ID && self::POST_TYPE === get_post_type( $post_id ) ) ? (int) $post->ID : 0;
-			}
+		if ( $post_id && self::POST_TYPE === get_post_type( $post_id ) && is_singular( self::POST_TYPE ) ) {
+			return (int) $post_id;
+		}
 
-			$queried_object = get_queried_object();
-			if ( ! $queried_object || ( $queried_object instanceof WP_Post && self::POST_TYPE === $queried_object->post_type && (int) $queried_object->ID === (int) $post->ID ) ) {
+		if ( is_singular( self::POST_TYPE ) ) {
+			$post = get_post();
+			if ( $post && self::POST_TYPE === get_post_type( $post ) ) {
 				return (int) $post->ID;
 			}
 		}
 
-		return ( $post_id && is_singular( self::POST_TYPE ) && self::POST_TYPE === get_post_type( $post_id ) ) ? $post_id : 0;
+		return 0;
 	}
 
 	private function sanitize_shortcode_class( $class ) {
