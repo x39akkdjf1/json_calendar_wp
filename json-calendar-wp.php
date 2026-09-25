@@ -343,7 +343,36 @@ final class JSON_Calendar_WP {
 		$time_start = $this->value( $entry, array( 'time_start' ) );
 		$time_end = $this->value( $entry, array( 'time_end' ) );
 		$description = $this->value( $entry, array( 'description', 'details', 'content' ) );
-		$post_content = $description ? wp_kses_post( $description ) : '';
+		$post_content = '';
+
+		if ( $date ) {
+			$post_content .= '<p class="json-calendar-event-date"><strong>' . esc_html__( 'Date:', 'json-calendar-wp' ) . '</strong> ' . esc_html( $this->format_date_only( $date ) );
+
+			if ( $end && $end !== $date ) {
+				$post_content .= ' – ' . esc_html( $this->format_date_only( $end ) );
+			}
+
+			$post_content .= '</p>';
+		}
+
+		if ( $time_start || $time_end ) {
+			$post_content .= '<p class="json-calendar-event-time"><strong>' . esc_html__( 'Time:', 'json-calendar-wp' ) . '</strong> ';
+
+			if ( $time_start ) {
+				$post_content .= esc_html( $time_start );
+			}
+
+			if ( $time_end ) {
+				$post_content .= $time_start ? ' – ' : '';
+				$post_content .= esc_html( $time_end );
+			}
+
+			$post_content .= '</p>';
+		}
+
+		if ( $description ) {
+			$post_content .= wp_kses_post( $description );
+		}
 		$post_id = isset( $existing_posts[ $reference ] ) ? absint( $existing_posts[ $reference ] ) : 0;
 		$previous_image = $post_id ? (string) get_post_meta( $post_id, self::META_IMAGE_URL, true ) : '';
 		$postarr = array(
