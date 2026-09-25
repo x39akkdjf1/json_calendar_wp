@@ -186,7 +186,7 @@ The plugin writes these underscore-prefixed hidden post-meta keys on every sync:
 - `_json_calendar_source_url`
 - `_json_calendar_image_id` (only when an image has been sideloaded successfully)
 
-The description is also mirrored into `post_content`, and the image is sideloaded as the featured image when possible. The underscore prefix keeps these fields hidden from the classic Custom Fields metabox, but Elementor Theme Builder Dynamic Tags → Custom Field and ACF can still read them directly by meta key from the synced posts.
+The synced event date/time metadata and description are also mirrored into `post_content`, so block themes can display them through the standard Post Content block after a sync. Dates are formatted with the site's WordPress date format, while `time_start` and `time_end` are mirrored as escaped feed values without additional reformatting. The image is sideloaded as the featured image when possible. The underscore prefix keeps these fields hidden from the classic Custom Fields metabox, but Elementor Theme Builder Dynamic Tags → Custom Field and ACF can still read them directly by meta key from the synced posts.
 
 ## Date behavior
 

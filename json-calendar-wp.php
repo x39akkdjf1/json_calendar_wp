@@ -343,7 +343,46 @@ final class JSON_Calendar_WP {
 		$time_start = $this->value( $entry, array( 'time_start' ) );
 		$time_end = $this->value( $entry, array( 'time_end' ) );
 		$description = $this->value( $entry, array( 'description', 'details', 'content' ) );
-		$post_content = $description ? wp_kses_post( $description ) : '';
+		$post_content = '';
+
+		if ( $date ) {
+			$formatted_date = $this->format_date_only( $date );
+			$normalized_date = $this->source_date_only( $date );
+			$date_datetime = $this->machine_date_value( $date );
+			$post_content .= '<p class="json-calendar-event-date"><strong>' . esc_html__( 'Date:', 'json-calendar-wp' ) . '</strong> <time' . ( $date_datetime ? ' datetime="' . esc_attr( $date_datetime ) . '"' : '' ) . '>' . esc_html( $formatted_date ) . '</time>';
+
+			if ( $end && $end !== $date ) {
+				$formatted_end = $this->format_date_only( $end );
+				$normalized_end = $this->source_date_only( $end );
+				if ( $normalized_end !== $normalized_date ) {
+					$end_datetime = $this->machine_date_value( $end );
+					$post_content .= ' – <time' . ( $end_datetime ? ' datetime="' . esc_attr( $end_datetime ) . '"' : '' ) . '>' . esc_html( $formatted_end ) . '</time>';
+				}
+			}
+
+			$post_content .= '</p>';
+		}
+
+		if ( $time_start || $time_end ) {
+			$post_content .= '<p class="json-calendar-event-time"><strong>' . esc_html__( 'Time:', 'json-calendar-wp' ) . '</strong> ';
+
+			if ( $time_start ) {
+				$time_start_datetime = $this->machine_time_value( $time_start );
+				$post_content .= '<time' . ( $time_start_datetime ? ' datetime="' . esc_attr( $time_start_datetime ) . '"' : '' ) . '>' . esc_html( $time_start ) . '</time>';
+			}
+
+			if ( $time_end ) {
+				$post_content .= $time_start ? ' – ' : '';
+				$time_end_datetime = $this->machine_time_value( $time_end );
+				$post_content .= '<time' . ( $time_end_datetime ? ' datetime="' . esc_attr( $time_end_datetime ) . '"' : '' ) . '>' . esc_html( $time_end ) . '</time>';
+			}
+
+			$post_content .= '</p>';
+		}
+
+		if ( $description ) {
+			$post_content .= wp_kses_post( $description );
+		}
 		$post_id = isset( $existing_posts[ $reference ] ) ? absint( $existing_posts[ $reference ] ) : 0;
 		$previous_image = $post_id ? (string) get_post_meta( $post_id, self::META_IMAGE_URL, true ) : '';
 		$postarr = array(
@@ -578,6 +617,9 @@ final class JSON_Calendar_WP {
 	private function is_event( $value ) { return is_array( $value ) && ( isset( $value['title'] ) || isset( $value['date'] ) || isset( $value['reference'] ) ); }
 	private function today() { return strtotime( wp_date( 'Y-m-d', current_time( 'timestamp' ) ) ); }
 	private function timestamp( $entry, $keys ) { $value = $this->value( $entry, $keys ); return $value ? strtotime( $value ) : false; }
+	private function machine_date_value( $date ) { try { $value = trim( (string) $date ); if ( preg_match( '/^(\d{4}-\d{2}-\d{2})/', $value, $matches ) ) return $matches[1]; $datetime = new DateTimeImmutable( $value ); return $datetime->format( 'Y-m-d' ); } catch ( Exception $exception ) { return ''; } }
+	private function machine_time_value( $time ) { $value = trim( (string) $time ); if ( preg_match( '/(?:^|T|\s)(\d{2}:\d{2}(?::\d{2})?(?:\.\d+)?)(?:\s*(Z|([+\-]\d{2}):?(\d{2})))?\s*$/', $value, $matches ) ) return $matches[1] . ( ! empty( $matches[2] ) ? ( 'Z' === $matches[2] ? 'Z' : $matches[3] . ':' . $matches[4] ) : '' ); $has_explicit_offset = preg_match( '/(?:Z|[+\-]\d{2}:?\d{2})\s*$/', $value ); try { $datetime = new DateTimeImmutable( $value ); return $datetime->format( $has_explicit_offset ? 'H:i:sP' : 'H:i:s' ); } catch ( Exception $exception ) { return ''; } }
+	private function source_date_only( $date ) { return preg_match( '/^\s*(\d{4}-\d{2}-\d{2})/', (string) $date, $matches ) ? $matches[1] : trim( (string) $date ); }
 	private function filter_upcoming( $entries ) { $today = $this->today(); $result = array_filter( $entries, function( $entry ) use ( $today ) { $start = $this->timestamp( $entry, array( 'date', 'start_date', 'start', 'datetime' ) ); $end = $this->timestamp( $entry, array( 'date_end', 'end_date', 'end' ) ); return ( false !== $start && $start >= $today ) || ( false !== $end && $end >= $today ); } ); return $this->sort_entries( $result ); }
 	private function filter_past( $entries ) { $today = $this->today(); $result = array_filter( $entries, function( $entry ) use ( $today ) { $end = $this->timestamp( $entry, array( 'date_end', 'end_date', 'end' ) ); $start = $this->timestamp( $entry, array( 'date', 'start_date', 'start', 'datetime' ) ); return false !== $end ? $end < $today : ( false !== $start && $start < $today ); } ); return $this->sort_entries( $result, true ); }
 	private function sort_entries( $entries, $reverse = false ) { usort( $entries, function( $a, $b ) use ( $reverse ) { $x = $this->timestamp( $a, array( 'date', 'start_date', 'start', 'datetime', 'date_end', 'end_date', 'end' ) ); $y = $this->timestamp( $b, array( 'date', 'start_date', 'start', 'datetime', 'date_end', 'end_date', 'end' ) ); $r = ( false === $x || false === $y ) ? 0 : ( $x <=> $y ); return $reverse ? -$r : $r; } ); return array_values( $entries ); }
