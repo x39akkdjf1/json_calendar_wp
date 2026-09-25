@@ -47,6 +47,8 @@ final class JSON_Calendar_WP {
 		add_action( 'init', array( $this, 'ensure_cron_schedule' ) );
 		add_action( self::CRON_HOOK, array( $this, 'run_scheduled_sync' ) );
 		add_action( 'admin_post_json_calendar_wp_sync_now', array( $this, 'handle_manual_sync' ) );
+		add_action( 'wp_enqueue_scripts', array( $this, 'enqueue_shortcode_styles' ) );
+		add_action( 'enqueue_block_assets', array( $this, 'enqueue_shortcode_styles' ) );
 		add_shortcode( self::SHORTCODE, array( $this, 'render_shortcode' ) );
 		add_shortcode( self::META_SHORTCODE, array( $this, 'render_event_meta_shortcode' ) );
 	}
@@ -339,8 +341,6 @@ final class JSON_Calendar_WP {
 					if ( '' === $alt_text ) {
 						$alt_text = __( 'Event image', 'json-calendar-wp' );
 					}
-
-					$this->enqueue_shortcode_styles();
 
 					$output = sprintf(
 						'<img class="json-calendar-meta-image" src="%1$s" alt="%2$s" loading="lazy" decoding="async" />',
@@ -838,6 +838,8 @@ final class JSON_Calendar_WP {
 			$request_path = (string) wp_parse_url( wp_unslash( $_SERVER['REQUEST_URI'] ), PHP_URL_PATH );
 		}
 
+		$request_path = '/' . trim( $request_path, '/' );
+
 		$preview_post_id = 0;
 
 		if ( isset( $_REQUEST['context'] ) && is_array( $_REQUEST['context'] ) ) {
@@ -852,15 +854,7 @@ final class JSON_Calendar_WP {
 			$preview_post_id = absint( wp_unslash( $_REQUEST['post_id'] ) );
 		}
 
-		$is_shortcode_renderer = in_array(
-			untrailingslashit( $request_path ),
-			array(
-				'/wp/v2/block-renderer/core/shortcode',
-				'/wp-json/wp/v2/block-renderer/core/shortcode',
-				'/index.php/wp-json/wp/v2/block-renderer/core/shortcode',
-			),
-			true
-		);
+		$is_shortcode_renderer = 1 === preg_match( '#^/(?:wp-json/|index\.php/wp-json/)?wp/v2/block-renderer/core/shortcode(?:/[^/?]+)?$#', $request_path );
 
 		return $is_shortcode_renderer
 			&& $preview_post_id
