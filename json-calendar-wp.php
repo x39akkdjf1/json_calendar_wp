@@ -823,6 +823,8 @@ final class JSON_Calendar_WP {
 	}
 
 	private function is_site_editor_shortcode_preview( $queried_object ) {
+		global $wp;
+
 		if ( ! ( defined( 'REST_REQUEST' ) && REST_REQUEST ) ) {
 			return false;
 		}
@@ -837,7 +839,9 @@ final class JSON_Calendar_WP {
 
 		$request_path = '';
 
-		if ( isset( $_REQUEST['rest_route'] ) ) {
+		if ( isset( $wp->query_vars['rest_route'] ) ) {
+			$request_path = '/' . ltrim( (string) $wp->query_vars['rest_route'], '/' );
+		} elseif ( isset( $_REQUEST['rest_route'] ) ) {
 			$request_path = '/' . ltrim( (string) wp_unslash( $_REQUEST['rest_route'] ), '/' );
 		} elseif ( isset( $_SERVER['REQUEST_URI'] ) ) {
 			$request_uri = (string) wp_unslash( $_SERVER['REQUEST_URI'] );
@@ -879,7 +883,8 @@ final class JSON_Calendar_WP {
 			$preview_post_type = sanitize_key( wp_unslash( $_REQUEST['post_type'] ) );
 		}
 
-		$is_shortcode_renderer = 1 === preg_match( '#^/(?:wp-json/|index\.php/wp-json/)?(?:wp/v2/block-renderer/core/shortcode|wp-block-editor/v1/block-renderer/core/shortcode|wp/v2/block-editor/block-renderer/core/shortcode)(?:/[^/?]+)?$#', $request_path );
+		$rest_prefix = preg_quote( rest_get_url_prefix(), '#' );
+		$is_shortcode_renderer = 1 === preg_match( '#^/(?:' . $rest_prefix . '/|index\.php/' . $rest_prefix . '/)?(?:wp/v2/block-renderer/core/shortcode|wp-block-editor/v1/block-renderer/core/shortcode|wp/v2/block-editor/block-renderer/core/shortcode)(?:/[^/?]+)?$#', $request_path );
 
 		if ( ! $is_shortcode_renderer ) {
 			return false;
