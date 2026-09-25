@@ -20,6 +20,7 @@ final class JSON_Calendar_WP {
 	const OPTION_LAST_SYNC_ERROR = 'json_calendar_wp_last_sync_error';
 	const OPTION_SCHEDULE_LOCK = 'json_calendar_wp_schedule_lock';
 	const SHORTCODE = 'json_calendar';
+	const META_SHORTCODE = 'json_calendar_meta';
 	const CACHE_VERSION = '13';
 	const POST_TYPE = 'json_calendar_event';
 	const REWRITE_SLUG = 'json-calendar-event';
@@ -47,6 +48,7 @@ final class JSON_Calendar_WP {
 		add_action( self::CRON_HOOK, array( $this, 'run_scheduled_sync' ) );
 		add_action( 'admin_post_json_calendar_wp_sync_now', array( $this, 'handle_manual_sync' ) );
 		add_shortcode( self::SHORTCODE, array( $this, 'render_shortcode' ) );
+		add_shortcode( self::META_SHORTCODE, array( $this, 'render_event_meta_shortcode' ) );
 	}
 
 	public static function activate() {
@@ -268,6 +270,115 @@ final class JSON_Calendar_WP {
 			$output .= '</div></li>';
 		}
 		return $output . '</ul></div>';
+	}
+
+	public function render_event_meta_shortcode( $atts ) {
+		$atts = shortcode_atts(
+			array(
+				'field' => '',
+				'label' => '',
+				'class' => '',
+			),
+			$atts,
+			self::META_SHORTCODE
+		);
+
+		$field = sanitize_key( $atts['field'] );
+		if ( '' === $field ) {
+			return '';
+		}
+
+		$post_id = $this->get_current_event_post_id();
+		if ( ! $post_id ) {
+			return '';
+		}
+
+		$output = '';
+
+		switch ( $field ) {
+			case 'title':
+				$output = esc_html( get_the_title( $post_id ) );
+				break;
+
+			case 'date':
+				$output = esc_html( $this->format_date_only( (string) get_post_meta( $post_id, self::META_DATE, true ) ) );
+				break;
+
+			case 'date_end':
+				$output = esc_html( $this->format_date_only( (string) get_post_meta( $post_id, self::META_DATE_END, true ) ) );
+				break;
+
+			case 'time_start':
+				$output = esc_html( (string) get_post_meta( $post_id, self::META_TIME_START, true ) );
+				break;
+
+			case 'time_end':
+				$output = esc_html( (string) get_post_meta( $post_id, self::META_TIME_END, true ) );
+				break;
+
+			case 'time':
+				$start = (string) get_post_meta( $post_id, self::META_TIME_START, true );
+				$end = (string) get_post_meta( $post_id, self::META_TIME_END, true );
+
+				if ( '' !== $start && '' !== $end ) {
+					$output = esc_html( $start . ' – ' . $end );
+				} elseif ( '' !== $start || '' !== $end ) {
+					$output = esc_html( '' !== $start ? $start : $end );
+				}
+				break;
+
+			case 'description':
+				$output = wp_kses_post( (string) get_post_meta( $post_id, self::META_DESCRIPTION, true ) );
+				break;
+
+			case 'image':
+				$image_url = (string) get_post_meta( $post_id, self::META_IMAGE_URL, true );
+
+				if ( '' !== $image_url ) {
+					$alt_text = get_the_title( $post_id );
+					if ( '' === $alt_text ) {
+						$alt_text = __( 'Event image', 'json-calendar-wp' );
+					}
+
+					$output = sprintf(
+						'<img class="json-calendar-meta-image" src="%1$s" alt="%2$s" loading="lazy" decoding="async" style="%3$s" />',
+						esc_url( $image_url ),
+						esc_attr( $alt_text ),
+						esc_attr( 'max-width:100%;height:auto;' )
+					);
+				}
+				break;
+
+			case 'reference':
+				$output = esc_html( (string) get_post_meta( $post_id, self::META_REFERENCE, true ) );
+				break;
+		}
+
+		if ( '' === $output ) {
+			return '';
+		}
+
+		$label = sanitize_text_field( $atts['label'] );
+		$class = $this->sanitize_shortcode_class( $atts['class'] );
+		if ( '' === $label && '' === $class ) {
+			return $output;
+		}
+
+		$classes = array(
+			'json-calendar-meta',
+			sanitize_html_class( 'json-calendar-meta-' . $field ),
+		);
+
+		if ( '' !== $class ) {
+			$classes[] = $class;
+		}
+
+		return sprintf(
+			'<div class="%1$s">%2$s%3$s</div>',
+			esc_attr( implode( ' ', array_filter( $classes ) ) ),
+			'' !== $label ? '<span class="json-calendar-meta-label">' . esc_html( $label ) . '</span> ' : '',
+			$output
+		);
 	}
 
 	private function sync_endpoint( $url, $force = false, $update_status = true ) {
@@ -643,6 +754,32 @@ final class JSON_Calendar_WP {
 		);
 
 		return $posts ? (int) reset( $posts ) : 0;
+	}
+
+	private function get_current_event_post_id() {
+		if ( ! is_singular( self::POST_TYPE ) ) {
+			return 0;
+		}
+
+		$post_id = get_queried_object_id();
+		if ( ! $post_id ) {
+			$post = get_post();
+			$post_id = $post ? (int) $post->ID : 0;
+		}
+
+		return $post_id && self::POST_TYPE === get_post_type( $post_id ) ? $post_id : 0;
+	}
+
+	private function sanitize_shortcode_class( $class ) {
+		if ( ! is_scalar( $class ) ) {
+			return '';
+		}
+
+		$classes = preg_split( '/\s+/', trim( (string) $class ) );
+		$classes = array_map( 'sanitize_html_class', array_filter( $classes ) );
+		$classes = array_filter( array_unique( $classes ) );
+
+		return implode( ' ', $classes );
 	}
 }
 

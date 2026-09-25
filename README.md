@@ -188,6 +188,56 @@ The plugin writes these underscore-prefixed hidden post-meta keys on every sync:
 
 The description is also mirrored into `post_content`, and the image is sideloaded as the featured image when possible. The underscore prefix keeps these fields hidden from the classic Custom Fields metabox, but Elementor Theme Builder Dynamic Tags → Custom Field and ACF can still read them directly by meta key from the synced posts.
 
+## Block-theme Site Editor shortcode for event fields
+
+If your site uses a block theme and you want to place event fields inside the Site Editor template, add a **Shortcode** block to the single template for **Calendar Events** and use:
+
+```text
+[json_calendar_meta field="date"]
+```
+
+Recommended workflow:
+
+1. Open **Appearance → Editor → Templates**.
+2. Edit the single template used for **Calendar Events**.
+3. Insert a **Shortcode** block wherever an event field should appear.
+4. Enter one of the supported `[json_calendar_meta]` shortcodes.
+5. Save the template.
+
+Supported fields for `[json_calendar_meta]`:
+
+- `title`
+- `date`
+- `date_end`
+- `time_start`
+- `time_end`
+- `time`
+- `description`
+- `image`
+- `reference`
+
+Examples:
+
+```text
+[json_calendar_meta field="date"]
+[json_calendar_meta field="time"]
+[json_calendar_meta field="description"]
+[json_calendar_meta field="image"]
+```
+
+Optional attributes:
+
+- `label` — adds a visible label before the field value
+- `class` — adds a sanitized CSS class to the wrapper
+
+Example with a label and class:
+
+```text
+[json_calendar_meta field="date" label="Date" class="event-date"]
+```
+
+The shortcode only renders values on real single `json_calendar_event` pages. On unrelated pages it returns an empty string.
+
 ## Date behavior
 
 - The standard view shows upcoming events.
