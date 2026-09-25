@@ -26,6 +26,7 @@ final class JSON_Calendar_WP {
 	const REWRITE_SLUG = 'json-calendar-event';
 	const CRON_HOOK = 'json_calendar_wp_sync_events';
 	const CRON_SCHEDULE = 'json_calendar_15_minutes';
+	private $rest_request_depth = 0;
 	private $rest_request_stack = array();
 
 	// These keys stay underscore-prefixed so sync bookkeeping stays out of the classic Custom Fields UI.
@@ -136,7 +137,8 @@ final class JSON_Calendar_WP {
 
 	public function capture_rest_request( $result, $server, $request ) {
 		if ( $request instanceof WP_REST_Request ) {
-			$this->rest_request_stack[] = $request;
+			++$this->rest_request_depth;
+			$this->rest_request_stack[ $this->rest_request_depth ] = $request;
 		}
 
 		return $result;
@@ -144,7 +146,10 @@ final class JSON_Calendar_WP {
 
 	public function release_rest_request( $result, $server, $request ) {
 		if ( $request instanceof WP_REST_Request ) {
-			array_pop( $this->rest_request_stack );
+			unset( $this->rest_request_stack[ $this->rest_request_depth ] );
+			if ( $this->rest_request_depth > 0 ) {
+				--$this->rest_request_depth;
+			}
 		}
 
 		return $result;
@@ -854,7 +859,7 @@ final class JSON_Calendar_WP {
 			return false;
 		}
 
-		$current_rest_request = end( $this->rest_request_stack );
+		$current_rest_request = isset( $this->rest_request_stack[ $this->rest_request_depth ] ) ? $this->rest_request_stack[ $this->rest_request_depth ] : null;
 		if ( ! ( $current_rest_request instanceof WP_REST_Request ) ) {
 			return false;
 		}
