@@ -170,6 +170,20 @@ final class JSON_Calendar_WP {
 		check_admin_referer( 'json_calendar_wp_sync_now' );
 
 		$endpoint = get_option( self::OPTION_ENDPOINT, '' );
+		if ( ! $endpoint ) {
+			wp_safe_redirect(
+				add_query_arg(
+					array(
+						'page' => 'json-calendar-wp',
+						'json_calendar_sync' => 'error',
+						'message' => __( 'Save a JSON endpoint URL before running a manual sync.', 'json-calendar-wp' ),
+					),
+					admin_url( 'options-general.php' )
+				)
+			);
+			exit;
+		}
+
 		$result = $this->sync_endpoint( $endpoint, true, true );
 		$args = array( 'page' => 'json-calendar-wp' );
 
@@ -336,12 +350,12 @@ final class JSON_Calendar_WP {
 
 		$count = count( $processed_post_ids );
 		$trashed = $this->trash_missing_events( $url, array_keys( $seen ) );
-		$result = array( 'count' => $count, 'trashed' => $trashed );
+		$result = array( 'count' => $count + $trashed, 'synced' => $count, 'trashed' => $trashed );
 		$error = $errors ? new WP_Error( 'sync_failed', implode( ' ', array_unique( $errors ) ) ) : null;
 
 		if ( $update_status ) {
 			update_option( self::OPTION_LAST_SYNC, current_time( 'timestamp' ), false );
-			update_option( self::OPTION_LAST_SYNC_COUNT, $count, false );
+			update_option( self::OPTION_LAST_SYNC_COUNT, $result['count'], false );
 			if ( $error ) {
 				update_option( self::OPTION_LAST_SYNC_ERROR, $error->get_error_message(), false );
 			} else {
@@ -436,30 +450,40 @@ final class JSON_Calendar_WP {
 	}
 
 	private function trash_missing_events( $url, $seen ) {
+		global $wpdb;
+
 		$url = esc_url_raw( $url );
 		if ( ! $url ) {
 			return 0;
 		}
 
-		$posts = get_posts(
-			array(
-				'post_type' => self::POST_TYPE,
-				'post_status' => array( 'publish', 'draft', 'pending', 'future', 'private' ),
-				'numberposts' => -1,
-				'fields' => 'ids',
-				'suppress_filters' => true,
-				'meta_query' => array(
-					array(
-						'key' => self::META_SOURCE_URL,
-						'value' => $url,
-					),
-				),
-			)
+		$statuses = array( 'publish', 'draft', 'pending', 'future', 'private' );
+		$results = $wpdb->get_results(
+			$wpdb->prepare(
+				"SELECT posts.ID AS post_id, reference.meta_value AS reference
+				FROM {$wpdb->posts} AS posts
+				INNER JOIN {$wpdb->postmeta} AS source ON posts.ID = source.post_id AND source.meta_key = %s
+				INNER JOIN {$wpdb->postmeta} AS reference ON posts.ID = reference.post_id AND reference.meta_key = %s
+				WHERE posts.post_type = %s
+				AND posts.post_status IN (%s, %s, %s, %s, %s)
+				AND source.meta_value = %s",
+				self::META_SOURCE_URL,
+				self::META_REFERENCE,
+				self::POST_TYPE,
+				$statuses[0],
+				$statuses[1],
+				$statuses[2],
+				$statuses[3],
+				$statuses[4],
+				$url
+			),
+			ARRAY_A
 		);
 		$count = 0;
 
-		foreach ( $posts as $post_id ) {
-			$reference = (string) get_post_meta( $post_id, self::META_REFERENCE, true );
+		foreach ( $results as $row ) {
+			$post_id = isset( $row['post_id'] ) ? absint( $row['post_id'] ) : 0;
+			$reference = isset( $row['reference'] ) ? (string) $row['reference'] : '';
 			if ( ! in_array( $reference, $seen, true ) ) {
 				wp_trash_post( $post_id );
 				++$count;
