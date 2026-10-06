@@ -37,6 +37,7 @@ final class JSON_Calendar_WP {
 	const META_DESCRIPTION = '_json_calendar_description';
 	const META_SOURCE_URL = '_json_calendar_source_url';
 	const META_IMAGE_ID = '_json_calendar_image_id';
+	const META_ATTACHMENTS = '_json_calendar_attachments';
 
 	public function __construct() {
 		add_action( 'admin_menu', array( $this, 'add_settings_page' ) );
@@ -47,6 +48,7 @@ final class JSON_Calendar_WP {
 		add_action( 'init', array( $this, 'ensure_cron_schedule' ) );
 		add_action( self::CRON_HOOK, array( $this, 'run_scheduled_sync' ) );
 		add_action( 'admin_post_json_calendar_wp_sync_now', array( $this, 'handle_manual_sync' ) );
+		add_filter( 'the_content', array( $this, 'append_event_videos' ) );
 		add_shortcode( self::SHORTCODE, array( $this, 'render_shortcode' ) );
 	}
 
@@ -447,6 +449,7 @@ final class JSON_Calendar_WP {
 		update_post_meta( $post_id, self::META_TIME_END, $time_end );
 		update_post_meta( $post_id, self::META_DESCRIPTION, $description );
 		update_post_meta( $post_id, self::META_SOURCE_URL, $url );
+		update_post_meta( $post_id, self::META_ATTACHMENTS, $this->extract_youtube_ids( $entry ) );
 
 		$error_message = '';
 		if ( $image ) {
@@ -641,6 +644,30 @@ final class JSON_Calendar_WP {
 	}
 
 	private function is_event( $value ) { return is_array( $value ) && ( isset( $value['title'] ) || isset( $value['date'] ) || isset( $value['reference'] ) ); }
+	private function extract_youtube_ids( $entry ) {
+		$raw = isset( $entry['attachement'] ) ? $entry['attachement'] : ( isset( $entry['attachment'] ) ? $entry['attachment'] : array() );
+		$items = array();
+		if ( is_array( $raw ) ) array_walk_recursive( $raw, function( $item ) use ( &$items ) { $items[] = $item; } ); else $items[] = $raw;
+		$ids = array();
+		foreach ( $items as $item ) {
+			if ( ! is_scalar( $item ) ) continue;
+			foreach ( preg_split( '/[\s,]+/', trim( (string) $item ) ) as $link ) {
+				if ( preg_match( '~^(?:https?://)?(?:(?:www|m|music)\.)?(?:youtube(?:-nocookie)?\.com/(?:watch\?(?:[^\s#]*&)?v=|embed/|shorts/|live/|v/)|youtu\.be/)([A-Za-z0-9_-]{11})(?![A-Za-z0-9_-])~i', $link, $m ) ) $ids[ $m[1] ] = $m[1];
+			}
+		}
+		return array_values( $ids );
+	}
+	public function append_event_videos( $content ) {
+		if ( ! is_singular( self::POST_TYPE ) || ! in_the_loop() || ! is_main_query() ) return $content;
+		$ids = get_post_meta( get_the_ID(), self::META_ATTACHMENTS, true );
+		if ( ! is_array( $ids ) || ! $ids ) return $content;
+		$html = '<div class="json-calendar-event-videos">';
+		foreach ( $ids as $id ) {
+			if ( ! preg_match( '/^[A-Za-z0-9_-]{11}$/', $id ) ) continue;
+			$html .= '<div class="json-calendar-event-video" style="position:relative;width:100%;aspect-ratio:16/9;margin:1em 0;"><iframe src="' . esc_url( 'https://www.youtube.com/embed/' . $id . '?autoplay=0' ) . '" title="YouTube video" style="position:absolute;top:0;left:0;width:100%;height:100%;border:0;" loading="lazy" allow="encrypted-media; picture-in-picture; fullscreen" allowfullscreen></iframe></div>';
+		}
+		return $content . $html . '</div>';
+	}
 	private function today() { return strtotime( wp_date( 'Y-m-d', current_time( 'timestamp' ) ) ); }
 	private function timestamp( $entry, $keys ) { $value = $this->value( $entry, $keys ); return $value ? strtotime( $value ) : false; }
 	private function machine_date_value( $date ) { try { $value = trim( (string) $date ); if ( preg_match( '/^(\d{4}-\d{2}-\d{2})/', $value, $matches ) ) return $matches[1]; $datetime = new DateTimeImmutable( $value ); return $datetime->format( 'Y-m-d' ); } catch ( Exception $exception ) { return ''; } }
